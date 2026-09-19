@@ -1,0 +1,25 @@
+# Node / Next.js
+node_modules/
+.next/
+frontend/.env*.local
+
+# Python / FastAPI
+__pycache__/
+*.pyc
+backend/venv/
+backend/.venv/
+
+# Environment secrets — never commit these
+.env
+*.env
+
+# Docker
+docker-data/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
