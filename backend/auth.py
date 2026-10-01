@@ -10,6 +10,18 @@ from security import create_access_token, decode_access_token, hash_password, ve
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
+
+
+def get_current_user_optional(
+    token: str | None = Depends(optional_oauth2_scheme), db: Session = Depends(get_db)
+) -> User | None:
+    if token is None:
+        return None
+    user_id = decode_access_token(token)
+    if user_id is None:
+        return None
+    return db.get(User, user_id)
 
 
 def to_user_out(user: User) -> UserOut:
