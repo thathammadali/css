@@ -18,6 +18,7 @@ def to_registration_out(registration: Registration) -> RegistrationOut:
         user_full_name=registration.user.full_name,
         user_primary_email=registration.user.primary_email,
         status=registration.status,
+        receipt_uploaded=registration.receipt_path is not None,
         payment_rejection_reason=registration.payment_rejection_reason,
         created_at=registration.created_at,
     )

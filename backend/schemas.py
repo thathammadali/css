@@ -145,6 +145,7 @@ class RegistrationOut(BaseModel):
     user_full_name: str
     user_primary_email: str
     status: str
+    receipt_uploaded: bool = False
     payment_rejection_reason: str | None = None
     created_at: datetime
 
