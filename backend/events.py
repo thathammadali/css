@@ -95,6 +95,9 @@ def create_session(
         ends_at=data.ends_at,
         timezone=data.timezone,
         location=data.location,
+        capacity=data.capacity,
+        meeting_link=data.meeting_link,
+        speaker=data.speaker,
     )
     db.add(new_session)
     db.commit()
@@ -103,9 +106,13 @@ def create_session(
 
 
 @router.get("/{event_id}/sessions", response_model=list[SessionOut])
-def list_sessions(event_id: int, db: Session = Depends(get_db)):
+def list_sessions(
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+):
     event = db.get(Event, event_id)
-    if event is None:
+    if event is None or (event.status == "DRAFT" and not _is_admin(user)):
         raise HTTPException(status_code=404, detail="Event not found.")
     return (
         db.query(EventSession)

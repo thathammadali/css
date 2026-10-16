@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Role, User
-from schemas import SignupRequest, TokenOut, UserOut
+from schemas import ProfileUpdate, SignupRequest, TokenOut, UserOut
 from security import create_access_token, decode_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -30,6 +30,7 @@ def to_user_out(user: User) -> UserOut:
         full_name=user.full_name,
         primary_email=user.primary_email,
         secondary_email=user.secondary_email,
+        position_title=user.position_title,
         role=user.role.name,
     )
 
@@ -78,6 +79,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         full_name=data.full_name,
         primary_email=primary_email,
         secondary_email=secondary_email,
+        position_title=data.position_title,
         hashed_password=hash_password(data.password),
         role_id=student_role.id,
     )
@@ -110,4 +112,17 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
+    return to_user_out(user)
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    data: ProfileUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if data.position_title is not None:
+        user.position_title = data.position_title
+    db.commit()
+    db.refresh(user)
     return to_user_out(user)

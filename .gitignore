@@ -8,6 +8,7 @@ __pycache__/
 *.pyc
 backend/venv/
 backend/.venv/
+backend/uploads/
 
 # Environment secrets — never commit these
 .env
