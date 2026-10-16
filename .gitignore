@@ -25,4 +25,4 @@ docker-data/
 .DS_Store
 Thumbs.db.venv/
 
-.venv/
+.venv/backend/openapi.json
