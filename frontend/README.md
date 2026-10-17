@@ -1,36 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🌐 SEMS — Frontend Client Application
 
-## Getting Started
+Standalone React 19 + TypeScript frontend for the **Session Management System (SEMS)**.
 
-First, run the development server:
+This repository contains the **pure frontend** code. It connects to the FastAPI backend API via configured tunnel/base URL or falls back gracefully to offline mock mode.
 
+---
+
+## 🚀 Quick Start Guide
+
+### 1. Install Dependencies
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Configure Backend API (Optional)
+By default, the frontend connects to the backend tunnel configured in `src/services/apiClient.ts` or you can create a `.env` file:
+```env
+VITE_API_BASE_URL=https://your-backend-api-url.com
+```
+*(You can also configure or change the backend tunnel URL dynamically right inside the app via the **Tunnel & Origin** dialog on the Login screen without rebuilding).*
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. Run Locally (Development)
+```bash
+npm run dev
+```
+The app will launch at:
+```
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 4. Build for Production
+To generate the static production assets (HTML/CSS/JS) for deployment to Vercel, Netlify, Cloudflare Pages, or GitHub Pages:
+```bash
+npm run build
+```
+Output files will be generated in the `/dist` folder.
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## 📁 Frontend Directory Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+frontend/
+├── index.html              # HTML entry point
+├── vite.config.ts          # Vite build & plugin configuration
+├── tsconfig.json           # TypeScript configuration
+├── package.json            # Frontend dependencies & scripts
+│
+├── public/                 # Static public assets
+│
+└── src/                    # Source code
+    ├── App.tsx             # Main routing & application state
+    ├── main.tsx            # React DOM root entry
+    ├── types.ts            # Type definitions (Events, Sessions, Users)
+    ├── index.css           # Global Tailwind CSS styles and theme tokens
+    │
+    ├── components/         # Reusable UI components
+    │   ├── TopAppBar.tsx   # Top header & backend connection status badge
+    │   ├── LoginPage.tsx   # Login, registration, & tunnel setup
+    │   ├── SessionCard.tsx # Session cards (Speaker, Seats, Direct Join Link)
+    │   ├── events/         # Event catalog & detail pages
+    │   ├── sessions/       # Sessions list, detail, & live meeting rooms
+    │   ├── certificates/   # Certificate issuance & verification
+    │   ├── forms/          # Custom form builder
+    │   └── users/          # User management
+    │
+    ├── services/           # Backend API communication
+    │   ├── apiClient.ts    # Central fetch client (GET /events, POST /auth/login, etc.)
+    │   ├── eventService.ts # Event caching and lifecycle management
+    │   └── userService.ts  # Local user session and authentication
+    │
+    ├── data/               # Mock datasets for offline / fallback mode
+    │   ├── mockEvents.ts   # Sample event catalog
+    │   ├── mockSessions.ts # Sample sessions with speakers & attendance
+    │   └── mockForms.ts    # Default registration forms
+    │
+    └── utils/              # Helper utilities (routing, role permissions)
+        ├── router.ts       # Hash route parser (#/events, #/home)
+        └── roleUtils.ts    # Role identification and access checks
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 🛠️ Available Scripts
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Command | Description |
+|---|---|
+| `npm run dev` | Starts the Vite local development server on port 3000 |
+| `npm run build` | Compiles TypeScript and creates optimized production assets in `/dist` |
+| `npm run preview` | Locally previews the production build from `/dist` |
+| `npm run lint` | Runs TypeScript type-checker (`tsc --noEmit`) to verify zero errors |

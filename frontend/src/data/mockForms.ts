@@ -1,0 +1,77 @@
+import { RegistrationFormConfig } from '../types';
+
+export const DEFAULT_REGISTRATION_FORM: RegistrationFormConfig = {
+  id: 'form-default',
+  version: 1,
+  formName: 'Standard Campus Session Registration',
+  description: 'Official session registration questionnaire and attendee screening form.',
+  updatedAt: '2026-09-22',
+  isPublished: true,
+  fields: [
+    {
+      id: 'f-name',
+      label: 'Full Name',
+      type: 'text',
+      required: true,
+      placeholder: 'e.g. Ali Raza',
+    },
+    {
+      id: 'f-email',
+      label: 'Primary University Email',
+      type: 'email',
+      required: true,
+      placeholder: 'student@university.edu.pk',
+    },
+    {
+      id: 'f-secondary-email',
+      label: 'Secondary Personal Email (Permanent post-graduation access)',
+      type: 'email',
+      required: true,
+      placeholder: 'personal.email@gmail.com',
+    },
+    {
+      id: 'f-roll',
+      label: 'Roll Number',
+      type: 'text',
+      required: true,
+      placeholder: 'e.g. 2024-CS-01',
+    },
+    {
+      id: 'f-dept',
+      label: 'Department',
+      type: 'dropdown',
+      required: true,
+      options: ['Computer Science', 'Software Engineering', 'Electrical Engineering', 'Data Science', 'Business & Tech'],
+      defaultValue: 'Computer Science',
+    },
+    {
+      id: 'f-phone',
+      label: 'Phone Number',
+      type: 'phone',
+      required: true,
+      placeholder: '+92 300 1234567',
+    },
+    {
+      id: 'f-exp',
+      label: 'Prior Experience in Domain',
+      type: 'radio',
+      required: false,
+      options: ['Beginner (No background)', 'Intermediate', 'Advanced'],
+      defaultValue: 'Beginner (No background)',
+    },
+    {
+      id: 'f-statement',
+      label: 'Why do you want to attend this session?',
+      type: 'textarea',
+      required: false,
+      placeholder: 'Briefly describe your objectives...',
+    },
+    {
+      id: 'f-id-proof',
+      label: 'Student Card / Institutional Proof',
+      type: 'file',
+      required: false,
+      placeholder: 'Upload PNG/PDF up to 5 MB',
+    },
+  ],
+};
