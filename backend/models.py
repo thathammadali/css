@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, Text, Numeric, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import Boolean, Column, Integer, String, Text, Numeric, ForeignKey, DateTime, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import false, func
 from database import Base
@@ -35,6 +35,13 @@ class Event(Base):
     category = Column(String)
     organizer = Column(String)
     status = Column(String, nullable=False, default="DRAFT")  # DRAFT, PUBLISHED, UPCOMING, ...
+    form_schema = Column(JSON(none_as_null=True), nullable=True)
+    form_version = Column(Integer, nullable=False, default=0, server_default="0")
+
+    @property
+    def has_form(self) -> bool:
+        return self.form_schema is not None
+
     capacity = Column(Integer, nullable=True)
     registration_deadline = Column(DateTime(timezone=True), nullable=True)
     fee_amount = Column(Numeric(10, 2), nullable=False, default=0)  # 0 = free event
@@ -107,6 +114,10 @@ class Registration(Base):
     status = Column(String, nullable=False, default="SUBMITTED")
     receipt_path = Column(String, nullable=True)
     payment_rejection_reason = Column(String, nullable=True)
+    answers = Column(JSON(none_as_null=True), nullable=True)
+    answers_form_version = Column(Integer, nullable=True)
+    edit_count = Column(Integer, nullable=False, default=0, server_default="0")
+    answers_updated_at = Column(DateTime(timezone=True), nullable=True)
     attended = Column(Boolean, nullable=False, default=False, server_default=false())
     reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
