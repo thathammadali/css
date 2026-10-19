@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session as DBSession
 from auth import get_current_user, require_roles
 from database import get_db
 from models import EventSession, Registration, User
-from schemas import RegistrationOut
+from schemas import AttendanceBulk, AttendanceUpdate, RegistrationOut
 
 
 def to_registration_out(registration: Registration) -> RegistrationOut:
@@ -18,6 +18,7 @@ def to_registration_out(registration: Registration) -> RegistrationOut:
         user_full_name=registration.user.full_name,
         user_primary_email=registration.user.primary_email,
         status=registration.status,
+        attended=registration.attended,
         receipt_uploaded=registration.receipt_path is not None,
         payment_rejection_reason=registration.payment_rejection_reason,
         created_at=registration.created_at,
@@ -110,3 +111,58 @@ def cancel_registration(
     db.commit()
     db.refresh(registration)
     return to_registration_out(registration)
+
+
+@router.patch("/{registration_id}/attendance", response_model=RegistrationOut)
+def set_attendance(
+    registration_id: int,
+    data: AttendanceUpdate,
+    db: DBSession = Depends(get_db),
+    user: User = Depends(require_roles("admin", "super_admin")),
+):
+    registration = db.get(Registration, registration_id)
+    if registration is None:
+        raise HTTPException(status_code=404, detail="Registration not found.")
+    if data.attended and registration.status != "CONFIRMED":
+        raise HTTPException(
+            status_code=400,
+            detail="Only confirmed registrations can be marked as attended.",
+        )
+    registration.attended = data.attended
+    db.commit()
+    db.refresh(registration)
+    return to_registration_out(registration)
+
+
+@router.post("/sessions/{session_id}/attendance", response_model=list[RegistrationOut])
+def bulk_set_attendance(
+    session_id: int,
+    data: AttendanceBulk,
+    db: DBSession = Depends(get_db),
+    user: User = Depends(require_roles("admin", "super_admin")),
+):
+    if db.get(EventSession, session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    registrations = (
+        db.query(Registration)
+        .filter(
+            Registration.session_id == session_id,
+            Registration.id.in_(data.registration_ids),
+        )
+        .all()
+    )
+    found = {r.id for r in registrations}
+    missing = sorted(set(data.registration_ids) - found)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Not registrations of this session: {missing}")
+    if data.attended:
+        unconfirmed = [r.id for r in registrations if r.status != "CONFIRMED"]
+        if unconfirmed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Not confirmed, cannot mark attended: {unconfirmed}",
+            )
+    for registration in registrations:
+        registration.attended = data.attended
+    db.commit()
+    return [to_registration_out(r) for r in registrations]

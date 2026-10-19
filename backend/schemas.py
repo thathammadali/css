@@ -145,6 +145,7 @@ class RegistrationOut(BaseModel):
     user_full_name: str
     user_primary_email: str
     status: str
+    attended: bool = False
     receipt_uploaded: bool = False
     payment_rejection_reason: str | None = None
     created_at: datetime
@@ -155,3 +156,12 @@ class RegistrationOut(BaseModel):
 
 class PaymentReject(BaseModel):
     reason: str = Field(min_length=3, max_length=300)
+
+
+class AttendanceUpdate(BaseModel):
+    attended: bool
+
+
+class AttendanceBulk(BaseModel):
+    registration_ids: list[int] = Field(min_length=1, max_length=500)
+    attended: bool = True

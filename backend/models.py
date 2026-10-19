@@ -1,6 +1,6 @@
 from sqlalchemy import Boolean, Column, Integer, String, Text, Numeric, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import false, func
 from database import Base
 
 
@@ -107,6 +107,7 @@ class Registration(Base):
     status = Column(String, nullable=False, default="SUBMITTED")
     receipt_path = Column(String, nullable=True)
     payment_rejection_reason = Column(String, nullable=True)
+    attended = Column(Boolean, nullable=False, default=False, server_default=false())
     reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
