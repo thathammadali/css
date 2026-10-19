@@ -10,7 +10,7 @@ backend/venv/
 backend/.venv/
 backend/uploads/
 
-# Environment secrets — never commit these
+# Environment secrets ??? never commit these
 .env
 *.env
 
@@ -23,6 +23,9 @@ docker-data/
 
 # OS
 .DS_Store
-Thumbs.db.venv/
+Thumbs.db
+.venv/
 
-.venv/backend/openapi.json
+.venv/
+backend/openapi.json
+
