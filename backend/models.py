@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Numeric, ForeignKey, DateTime
+from sqlalchemy import Boolean, Column, Integer, String, Text, Numeric, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -16,6 +16,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
+    position_title = Column(String, nullable=True)  # e.g. "President", "VP", "GS", a teacher's name/title
     primary_email = Column(String, unique=True, nullable=False, index=True)
     secondary_email = Column(String, unique=True, nullable=True)
     hashed_password = Column(String, nullable=False)
@@ -53,5 +54,83 @@ class EventSession(Base):
     ends_at = Column(DateTime(timezone=True), nullable=False)
     timezone = Column(String, nullable=False, default="Asia/Karachi")
     location = Column(String)  # room or meeting link
+    capacity = Column(Integer, nullable=True)  # falls back to Event.capacity if not set
+    meeting_link = Column(String, nullable=True)
+    speaker = Column(String, nullable=True)
+
+    registrations = relationship("Registration", viewonly=True)
 
     event = relationship("Event", back_populates="sessions")
+
+    @property
+    def registered_count(self) -> int:
+        return sum(1 for r in self.registrations if r.status in ("CONFIRMED", "PAYMENT_PENDING"))
+
+
+class Assignment(Base):
+    __tablename__ = "assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    deadline = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    session = relationship("EventSession", backref="assignments")
+
+
+class AssignmentSubmission(Base):
+    __tablename__ = "assignment_submissions"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "user_id", name="uq_assignment_user_submission"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("assignments.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    file_path = Column(String, nullable=False)
+    is_late = Column(Boolean, default=False, nullable=False)
+    submitted_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    assignment = relationship("Assignment", backref="submissions")
+    user = relationship("User")
+
+
+class Registration(Base):
+    __tablename__ = "registrations"
+    __table_args__ = (UniqueConstraint("session_id", "user_id", name="uq_session_user"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String, nullable=False, default="SUBMITTED")
+    receipt_path = Column(String, nullable=True)
+    payment_rejection_reason = Column(String, nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    session = relationship("EventSession")
+    user = relationship("User", foreign_keys=[user_id])
+
+    @property
+    def session_title(self) -> str:
+        return self.session.title
+
+    @property
+    def event_id(self) -> int:
+        return self.session.event_id
+
+    @property
+    def event_title(self) -> str:
+        return self.session.event.title
+
+    @property
+    def user_full_name(self) -> str:
+        return self.user.full_name
+
+    @property
+    def user_primary_email(self) -> str:
+        return self.user.primary_email

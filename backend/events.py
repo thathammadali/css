@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user_optional, require_roles
 from database import get_db
-from models import Event, EventSession, User
+from models import Event, EventSession, Registration, User
 from schemas import EventCreate, EventOut, SessionCreate, SessionOut
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -95,6 +95,9 @@ def create_session(
         ends_at=data.ends_at,
         timezone=data.timezone,
         location=data.location,
+        capacity=data.capacity,
+        meeting_link=data.meeting_link,
+        speaker=data.speaker,
     )
     db.add(new_session)
     db.commit()
@@ -103,13 +106,35 @@ def create_session(
 
 
 @router.get("/{event_id}/sessions", response_model=list[SessionOut])
-def list_sessions(event_id: int, db: Session = Depends(get_db)):
+def list_sessions(
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+):
     event = db.get(Event, event_id)
-    if event is None:
+    if event is None or (event.status == "DRAFT" and not _is_admin(user)):
         raise HTTPException(status_code=404, detail="Event not found.")
-    return (
+    sessions = (
         db.query(EventSession)
         .filter(EventSession.event_id == event_id)
         .order_by(EventSession.starts_at)
         .all()
     )
+    admin = _is_admin(user)
+    confirmed_ids = set()
+    if user is not None and not admin and sessions:
+        confirmed_ids = {
+            sid
+            for (sid,) in db.query(Registration.session_id).filter(
+                Registration.user_id == user.id,
+                Registration.status == "CONFIRMED",
+                Registration.session_id.in_([s.id for s in sessions]),
+            )
+        }
+    result = []
+    for s in sessions:
+        out = SessionOut.model_validate(s)
+        if not admin and s.id not in confirmed_ids:
+            out.meeting_link = None
+        result.append(out)
+    return result
