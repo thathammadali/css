@@ -1,6 +1,7 @@
 # CSS Society — SeMS
 
 Session Management System for CSS.
+
 Stack: Vite + React, FastAPI, and PostgreSQL.
 
 ## Structure

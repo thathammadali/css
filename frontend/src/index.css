@@ -1,0 +1,993 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
+
+@layer base {
+  :root {
+    --app-bg: #070B14;
+    --panel-bg: #10192A;
+    --panel-bg-translucent: rgba(16, 25, 42, 0.88);
+    --panel-border: #1E2E48;
+    --panel-border-subtle: rgba(255, 255, 255, 0.08);
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --text-muted: #64748B;
+    --primary-accent: #2DD4BF;
+    --primary-accent-hover: #14B8A6;
+    --primary-accent-rgb: 45, 212, 191;
+    --primary-accent-subtle: rgba(45, 212, 191, 0.15);
+    --card-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+    --sidebar-bg: #090E1B;
+    --sidebar-border: #1E2E48;
+    --topbar-bg: #0B1120;
+    --topbar-border: #1E2E48;
+
+    --glass-bg: #10192A;
+    --glass-border: #1E2E48;
+    --glass-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    --glass-blur: blur(16px);
+
+    --bg-start: #070B14;
+    --bg-end: #0A101F;
+    --theme-primary: #10192A;
+    --theme-secondary: #F8FAFC;
+    --theme-background: #070B14;
+
+    --bg-start-rgb: 7, 11, 20;
+    --bg-end-rgb: 10, 16, 31;
+    --text-secondary-rgb: 148, 163, 184;
+
+    --accent-10: rgba(45, 212, 191, 0.10);
+    --accent-15: rgba(45, 212, 191, 0.15);
+    --accent-20: rgba(45, 212, 191, 0.20);
+    --accent-25: rgba(45, 212, 191, 0.25);
+    --accent-30: rgba(45, 212, 191, 0.30);
+    --accent-40: rgba(45, 212, 191, 0.40);
+    --accent-50: rgba(45, 212, 191, 0.50);
+    --text-sec-60: rgba(168, 181, 199, 0.65);
+    --text-sec-70: rgba(168, 181, 199, 0.78);
+    --text-sec-80: rgba(168, 181, 199, 0.88);
+    --bg-start-80: rgba(11, 18, 32, 0.85);
+    --bg-end-90: rgba(15, 23, 42, 0.92);
+  }
+
+  html.light-theme {
+    --app-bg: #E8EDF5;
+    --panel-bg: #FFFFFF;
+    --panel-bg-translucent: rgba(255, 255, 255, 0.98);
+    --panel-border: #CBD5E1;
+    --panel-border-subtle: #E2E8F0;
+    --text-primary: #0F172A;
+    --text-secondary: #475569;
+    --text-muted: #64748B;
+    --primary-accent: #0F766E;
+    --primary-accent-hover: #115E59;
+    --primary-accent-rgb: 15, 118, 110;
+    --primary-accent-subtle: rgba(15, 118, 110, 0.08);
+    --card-shadow: 0 2px 4px -1px rgba(15, 23, 42, 0.06), 0 8px 24px -4px rgba(15, 23, 42, 0.10), 0 0 0 1px rgba(15, 23, 42, 0.05);
+
+    --sidebar-bg: #FFFFFF;
+    --sidebar-border: #CBD5E1;
+    --topbar-bg: #FFFFFF;
+    --topbar-border: #CBD5E1;
+
+    --glass-bg: #FFFFFF;
+    --glass-border: #CBD5E1;
+    --glass-shadow: 0 2px 4px -1px rgba(15, 23, 42, 0.06), 0 8px 24px -4px rgba(15, 23, 42, 0.10), 0 0 0 1px rgba(15, 23, 42, 0.05);
+    --glass-blur: blur(16px);
+
+    --bg-start: #E8EDF5;
+    --bg-end: #DCE3EB;
+    --theme-primary: #172B3A;
+    --theme-secondary: #475569;
+    --theme-background: #E8EDF5;
+
+    --bg-start-rgb: 241, 245, 249;
+    --bg-end-rgb: 226, 232, 240;
+    --text-secondary-rgb: 71, 85, 105;
+
+    --accent-10: rgba(15, 118, 110, 0.10);
+    --accent-15: rgba(15, 118, 110, 0.15);
+    --accent-20: rgba(15, 118, 110, 0.20);
+    --accent-25: rgba(15, 118, 110, 0.25);
+    --accent-30: rgba(15, 118, 110, 0.30);
+    --accent-40: rgba(15, 118, 110, 0.40);
+    --accent-50: rgba(15, 118, 110, 0.50);
+    --text-sec-60: rgba(71, 85, 105, 0.70);
+    --text-sec-70: rgba(71, 85, 105, 0.85);
+    --text-sec-80: rgba(71, 85, 105, 0.95);
+    --bg-start-80: rgba(255, 255, 255, 0.95);
+    --bg-end-90: rgba(255, 255, 255, 0.98);
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text-primary);
+    background-color: var(--app-bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    min-height: 100dvh;
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+}
+
+.font-poppins {
+  font-family: 'Poppins', sans-serif;
+}
+
+.font-inter {
+  font-family: 'Inter', sans-serif;
+}
+
+/* ========================================================
+   FROSTED GLASSMORPHISM DESIGN SYSTEM (SEMS TOKENS)
+   ======================================================== */
+.glass-panel,
+.glass-card {
+  background-color: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-panel-interactive,
+.glass-card-interactive {
+  background-color: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.2s ease,
+              box-shadow 0.2s ease,
+              background-color 0.2s ease;
+}
+
+.glass-panel-interactive:hover,
+.glass-card-interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary-accent);
+  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.16);
+}
+
+/* Primary Action Buttons: Solid & High Contrast */
+.btn-primary {
+  background-color: var(--primary-accent);
+  color: #FFFFFF !important;
+  font-weight: 500;
+  transition: background-color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+.btn-primary:hover {
+  background-color: var(--primary-accent-hover);
+}
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* Enforce white text inside solid high-contrast buttons in all modes */
+button.bg-emerald-600,
+button.bg-emerald-700,
+button.bg-teal-600,
+button.bg-teal-700,
+button.bg-purple-600,
+button.bg-purple-700,
+button.bg-blue-600,
+button.bg-blue-700,
+button.bg-rose-600,
+button.bg-rose-700,
+button.bg-indigo-600,
+button.bg-indigo-700,
+button[class*="bg-[var(--primary-accent)]"],
+.btn-primary,
+.badge-solid {
+  color: #FFFFFF !important;
+}
+
+button.bg-emerald-600 *,
+button.bg-emerald-700 *,
+button.bg-teal-600 *,
+button.bg-teal-700 *,
+button.bg-purple-600 *,
+button.bg-purple-700 *,
+button.bg-blue-600 *,
+button.bg-blue-700 *,
+button.bg-rose-600 *,
+button.bg-rose-700 *,
+button.bg-indigo-600 *,
+button.bg-indigo-700 *,
+button[class*="bg-[var(--primary-accent)]"] *,
+.btn-primary * {
+  color: #FFFFFF !important;
+}
+
+/* ========================================================
+   GLOBAL THEME REACTIVE ACCENT BINDINGS
+   ======================================================== */
+.text-sems-accent,
+[class*="text-[#108E99]"] {
+  color: var(--primary-accent) !important;
+}
+
+.bg-sems-accent {
+  background-color: var(--primary-accent) !important;
+}
+
+[class*="border-[#108E99]"]:not([class*="/"]) {
+  border-color: var(--primary-accent) !important;
+}
+
+.text-sems-secondary {
+  color: var(--text-secondary) !important;
+}
+
+/* ========================================================
+   LIGHT THEME DESIGN TOKENS & CONTRAST AUDIT (WCAG AA >= 7:1)
+   ======================================================== */
+html.light-theme body {
+  color: #0F172A !important;
+  background-color: var(--app-bg, #E8EDF5) !important;
+  background-image: linear-gradient(180deg, var(--bg-start, #E8EDF5) 0%, var(--bg-end, #DCE3EB) 100%) !important;
+  background-attachment: fixed;
+}
+
+/* Primary text in Light Mode */
+html.light-theme .text-white {
+  color: #172B3A !important;
+}
+
+html.light-theme .text-white\/90,
+html.light-theme .text-white\/80 {
+  color: #1E293B !important;
+}
+
+html.light-theme .text-white\/70,
+html.light-theme .text-white\/60 {
+  color: #475569 !important;
+}
+
+html.light-theme .text-white\/50,
+html.light-theme .text-white\/40 {
+  color: #64748B !important;
+}
+
+html.light-theme .hover\:text-white:hover {
+  color: #172B3A !important;
+}
+
+/* Theme Secondary Text in Light Mode */
+html.light-theme .text-\[var\(--text-sec-80\)\],
+html.light-theme .text-\[var\(--text-sec-70\)\],
+html.light-theme .text-\[var\(--text-sec-60\)\],
+html.light-theme .text-\[var\(--text-secondary\)\] {
+  color: #64748B !important;
+}
+
+/* Slate tones in Light Mode */
+html.light-theme .text-slate-400,
+html.light-theme .text-slate-300 {
+  color: #475569 !important;
+}
+
+/* Semantic status labels mapped to high-contrast tones in Light Mode */
+html.light-theme .text-amber-200,
+html.light-theme .text-amber-300,
+html.light-theme .text-amber-400 {
+  color: #92400E !important;
+}
+
+html.light-theme .text-emerald-200,
+html.light-theme .text-emerald-300,
+html.light-theme .text-emerald-400 {
+  color: #065F46 !important;
+}
+
+html.light-theme .text-cyan-200,
+html.light-theme .text-cyan-300,
+html.light-theme .text-cyan-400 {
+  color: #0369A1 !important;
+}
+
+html.light-theme .text-rose-200,
+html.light-theme .text-rose-300,
+html.light-theme .text-rose-400 {
+  color: #9F1239 !important;
+}
+
+html.light-theme .text-purple-200,
+html.light-theme .text-purple-300,
+html.light-theme .text-purple-400 {
+  color: #6B21A8 !important;
+}
+
+/* Restore solid buttons text in light mode */
+html.light-theme button.bg-emerald-600,
+html.light-theme button.bg-teal-600,
+html.light-theme button.bg-teal-700,
+html.light-theme button.bg-purple-600,
+html.light-theme button.bg-blue-600,
+html.light-theme button.bg-rose-600,
+html.light-theme button.bg-indigo-600,
+html.light-theme .btn-primary,
+html.light-theme button[class*="bg-[var(--primary-accent)]"],
+html.light-theme [aria-checked="true"].bg-\[var\(--primary-accent\)\] {
+  color: #FFFFFF !important;
+}
+
+html.light-theme button.bg-emerald-600 *,
+html.light-theme button.bg-teal-600 *,
+html.light-theme button.bg-teal-700 *,
+html.light-theme button.bg-purple-600 *,
+html.light-theme button.bg-blue-600 *,
+html.light-theme button.bg-rose-600 *,
+html.light-theme button.bg-indigo-600 *,
+html.light-theme .btn-primary *,
+html.light-theme button[class*="bg-[var(--primary-accent)]"] * {
+  color: #FFFFFF !important;
+}
+
+/* Light Mode Glass Panels & Card Backgrounds */
+html.light-theme .glass-panel,
+html.light-theme .glass-panel-interactive,
+html.light-theme .glass-card,
+html.light-theme .glass-card-interactive {
+  background-color: #FFFFFF !important;
+  border: 1px solid #CBD5E1 !important;
+  box-shadow: 0 2px 4px -1px rgba(15, 23, 42, 0.06), 0 8px 24px -4px rgba(15, 23, 42, 0.10), 0 0 0 1px rgba(15, 23, 42, 0.05) !important;
+}
+
+html.light-theme .glass-panel-interactive:hover,
+html.light-theme .glass-card-interactive:hover {
+  background-color: #FFFFFF !important;
+  border-color: var(--primary-accent) !important;
+  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.14), 0 4px 8px -2px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* Inset sub-panels & chips inside elevated cards in light mode */
+html.light-theme .glass-card [class*="bg-[var(--panel-bg)]"],
+html.light-theme .glass-panel [class*="bg-[var(--panel-bg)]"] {
+  background-color: #F1F5F9 !important;
+  border-color: #CBD5E1 !important;
+}
+
+/* Transform dark banners into clean white cards in light mode */
+html.light-theme [class*="from-purple-950"],
+html.light-theme [class*="from-emerald-950"],
+html.light-theme [class*="from-indigo-950"],
+html.light-theme .from-white\/\[0\.07\] {
+  background-image: none !important;
+  background-color: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 4px 16px -2px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* Translucent dark sub-containers in light mode */
+html.light-theme .bg-black\/20,
+html.light-theme .bg-black\/30,
+html.light-theme .bg-black\/40,
+html.light-theme .bg-black\/50,
+html.light-theme .bg-black\/60 {
+  background-color: #F1F5F9 !important;
+  border-color: #CBD5E1 !important;
+  color: #172B3A !important;
+}
+
+/* Low-opacity white boxes in light mode */
+html.light-theme .bg-white\/\[0\.02\],
+html.light-theme .bg-white\/\[0\.03\],
+html.light-theme .bg-white\/\[0\.04\],
+html.light-theme .bg-white\/\[0\.05\],
+html.light-theme .bg-white\/\[0\.06\],
+html.light-theme .bg-white\/\[0\.07\],
+html.light-theme .bg-white\/\[0\.08\],
+html.light-theme .bg-white\/\[0\.09\],
+html.light-theme .bg-white\/\[0\.10\],
+html.light-theme .bg-white\/\[0\.12\],
+html.light-theme .bg-white\/\[0\.14\],
+html.light-theme .bg-white\/\[0\.15\] {
+  background-color: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+}
+
+html.light-theme .hover\:bg-white\/\[0\.04\]:hover,
+html.light-theme .hover\:bg-white\/\[0\.06\]:hover,
+html.light-theme .hover\:bg-white\/\[0\.08\]:hover,
+html.light-theme .hover\:bg-white\/\[0\.10\]:hover,
+html.light-theme .hover\:bg-white\/\[0\.12\]:hover,
+html.light-theme .hover\:bg-white\/\[0\.14\]:hover,
+html.light-theme .hover\:bg-white\/10:hover,
+html.light-theme .hover\:bg-white\/15:hover {
+  background-color: #EEF2F6 !important;
+}
+
+/* High-contrast table headers & borders in Light Mode */
+html.light-theme table thead {
+  background-color: #F1F5F9 !important;
+  color: #172B3A !important;
+  border-bottom: 2px solid #CBD5E1 !important;
+}
+
+html.light-theme table thead th {
+  color: #172B3A !important;
+  font-weight: 600 !important;
+}
+
+html.light-theme table tbody tr {
+  border-color: #E2E8F0 !important;
+}
+
+html.light-theme table tbody tr:hover {
+  background-color: #F8FAFC !important;
+}
+
+/* Subtle clean slate borders in light mode */
+html.light-theme .border-white\/\[0\.06\],
+html.light-theme .border-white\/\[0\.08\],
+html.light-theme .border-white\/\[0\.10\],
+html.light-theme .border-white\/\[0\.12\],
+html.light-theme .border-white\/\[0\.14\],
+html.light-theme .border-white\/\[0\.15\],
+html.light-theme .border-white\/\[0\.16\],
+html.light-theme .border-white\/\[0\.20\],
+html.light-theme .border-white\/\[0\.24\],
+html.light-theme .border-white\/10,
+html.light-theme .border-white\/20 {
+  border-color: #E2E8F0 !important;
+}
+
+/* Form Inputs in Light Mode */
+html.light-theme input,
+html.light-theme textarea,
+html.light-theme select {
+  background-color: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #172B3A !important;
+}
+
+html.light-theme input:focus,
+html.light-theme textarea:focus,
+html.light-theme select:focus {
+  border-color: var(--primary-accent) !important;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.2) !important;
+}
+
+html.light-theme input::placeholder,
+html.light-theme textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* Modals & Dialogs in Light Mode */
+html.light-theme .fixed .bg-\[\#09171F\],
+html.light-theme .fixed .bg-\[\#0B1220\],
+html.light-theme .fixed .bg-slate-900 {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.18) !important;
+}
+
+/* ========================================================
+   LIGHT THEME SEMANTIC BADGES & INSET STATUS BOXES
+   ======================================================== */
+html.light-theme [class*="bg-emerald-950"] {
+  background-color: #ECFDF5 !important;
+  border-color: #A7F3D0 !important;
+  color: #065F46 !important;
+}
+html.light-theme [class*="bg-amber-950"] {
+  background-color: #FFFBEB !important;
+  border-color: #FDE68A !important;
+  color: #92400E !important;
+}
+html.light-theme [class*="bg-cyan-950"] {
+  background-color: #F0F9FF !important;
+  border-color: #BAE6FD !important;
+  color: #0369A1 !important;
+}
+html.light-theme [class*="bg-rose-950"] {
+  background-color: #FFF1F2 !important;
+  border-color: #FECDD3 !important;
+  color: #9F1239 !important;
+}
+html.light-theme [class*="bg-purple-950"] {
+  background-color: #FAF5FF !important;
+  border-color: #E9D5FF !important;
+  color: #6B21A8 !important;
+}
+
+/* ========================================================
+   LIGHT THEME SESSION ROOMS HUB, WEBRTC PODS & PREJOIN
+   ======================================================== */
+
+/* 1. SESSION ROOMS HUB PAGE */
+html.light-theme #session-rooms-hub-page {
+  color: #0F172A !important;
+}
+
+/* Hub Header Banner in Light Mode */
+html.light-theme #session-rooms-hub-page [class*="from-[#041a16]"],
+html.light-theme #session-rooms-hub-page .bg-gradient-to-br {
+  background-image: linear-gradient(135deg, #F0FDF4 0%, #FFFFFF 50%, #ECFEFF 100%) !important;
+  border-color: #CBD5E1 !important;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06), 0 8px 10px -6px rgba(15, 23, 42, 0.04) !important;
+  color: #0F172A !important;
+}
+
+html.light-theme #session-rooms-hub-page h1,
+html.light-theme #session-rooms-hub-page h2,
+html.light-theme #session-rooms-hub-page h3 {
+  color: #0F172A !important;
+}
+
+html.light-theme #session-rooms-hub-page p {
+  color: #475569 !important;
+}
+
+/* Workflow Step Cards inside Hub Banner */
+html.light-theme #session-rooms-hub-page [class*="bg-white/[0.04]"],
+html.light-theme #session-rooms-hub-page [class*="bg-white/[0.06]"] {
+  background-color: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #1E293B !important;
+}
+
+html.light-theme #session-rooms-hub-page [class*="bg-white/[0.04]"] strong,
+html.light-theme #session-rooms-hub-page [class*="bg-white/[0.06]"] strong {
+  color: #0F172A !important;
+}
+
+html.light-theme #session-rooms-hub-page [class*="bg-white/[0.04]"] div,
+html.light-theme #session-rooms-hub-page [class*="bg-white/[0.06]"] div {
+  color: #334155 !important;
+}
+
+/* Filter pills container & buttons */
+html.light-theme #session-rooms-hub-page [class*="bg-white/[0.05]"] {
+  background-color: #F1F5F9 !important;
+  border-color: #CBD5E1 !important;
+}
+
+html.light-theme #session-rooms-hub-page [class*="bg-white/[0.05]"] button {
+  color: #475569 !important;
+}
+
+html.light-theme #session-rooms-hub-page [class*="bg-white/[0.05]"] button:hover {
+  color: #0F172A !important;
+}
+
+html.light-theme #session-rooms-hub-page [class*="bg-white/[0.05]"] button[class*="bg-emerald"] {
+  background-color: #FFFFFF !important;
+  color: #065F46 !important;
+  border-color: #10B981 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+}
+
+/* Hub search input */
+html.light-theme #session-rooms-hub-page input[type="text"] {
+  background-color: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+html.light-theme #session-rooms-hub-page input[type="text"]::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* Session Room Cards (e.g. Annual Robotics & AI Symposium 2026, UI/UX Design Sprint) */
+html.light-theme #session-rooms-hub-page .grid > div {
+  background-color: #FFFFFF !important;
+  background-image: none !important;
+  border-color: #CBD5E1 !important;
+  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.04) !important;
+  color: #0F172A !important;
+}
+
+html.light-theme #session-rooms-hub-page .grid > div:hover {
+  border-color: #94A3B8 !important;
+  box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* Live Session Room Card Accent */
+html.light-theme #session-rooms-hub-page .grid > div[class*="border-rose-500"] {
+  border-color: #F43F5E !important;
+  background-color: #FFF5F5 !important;
+  box-shadow: 0 10px 25px -5px rgba(244, 63, 94, 0.12) !important;
+}
+
+/* Room Meta Info Grid (Speaker, Date, Attendees, Time) */
+html.light-theme #session-rooms-hub-page .grid-cols-2 {
+  background-color: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+  color: #334155 !important;
+}
+
+html.light-theme #session-rooms-hub-page .grid-cols-2 span {
+  color: #1E293B !important;
+}
+
+/* Super Admin Room Code Container */
+html.light-theme #session-rooms-hub-page [class*="bg-purple-950"] {
+  background-color: #FAF5FF !important;
+  border-color: #D8B4FE !important;
+  color: #581C87 !important;
+}
+
+html.light-theme #session-rooms-hub-page [class*="bg-purple-950"] span {
+  color: #581C87 !important;
+}
+
+html.light-theme #session-rooms-hub-page [class*="bg-purple-950"] button {
+  background-color: #F3E8FF !important;
+  border-color: #D8B4FE !important;
+  color: #6B21A8 !important;
+}
+
+/* Participant code input area in Light Mode */
+html.light-theme #session-rooms-hub-page [class*="bg-black/60"] {
+  background-color: #F8FAFC !important;
+  border-color: #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+/* Super Admin Code Allotment Modal in Light Mode */
+html.light-theme #modal-code-allotment,
+html.light-theme .fixed.inset-0 [class*="bg-[#031317]"] {
+  background-color: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #0F172A !important;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25) !important;
+}
+
+html.light-theme .fixed.inset-0 [class*="bg-white/[0.04]"],
+html.light-theme .fixed.inset-0 [class*="bg-white/[0.06]"] {
+  background-color: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+html.light-theme .fixed.inset-0 [class*="bg-white/[0.04]"] span,
+html.light-theme .fixed.inset-0 [class*="bg-white/[0.06]"] span {
+  color: #0F172A !important;
+}
+
+/* 2. PREJOIN GREEN ROOM & LIVE WEBRTC MEETING */
+html.light-theme #session-room-prejoin,
+html.light-theme #session-room-view,
+html.light-theme .session-room-shell {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+  border: 1px solid #CBD5E1 !important;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* Prejoin & Room Header */
+html.light-theme #session-room-prejoin > header,
+html.light-theme #session-room-view > header {
+  background-color: #FFFFFF !important;
+  border-bottom: 1px solid #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+html.light-theme #session-room-view > header h2,
+html.light-theme #session-room-prejoin > header h2 {
+  color: #0F172A !important;
+}
+
+/* Bottom Control Dock */
+html.light-theme #session-room-view > footer,
+html.light-theme #session-room-view [data-controls="room"] {
+  background-color: #FFFFFF !important;
+  border-top: 1px solid #E2E8F0 !important;
+  color: #0F172A !important;
+  box-shadow: 0 -4px 16px -2px rgba(15, 23, 42, 0.05) !important;
+}
+
+/* Collapsible Sidebar (Chat, Q&A, Attendance, Participants, Tools) */
+html.light-theme #session-room-view aside,
+html.light-theme #session-room-view [data-sidebar="room"] {
+  background-color: #F8FAFC !important;
+  border-left: 1px solid #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+html.light-theme #session-room-view aside h2,
+html.light-theme #session-room-view aside h3,
+html.light-theme #session-room-view aside h4,
+html.light-theme #session-room-view aside .font-medium,
+html.light-theme #session-room-view aside .font-semibold {
+  color: #0F172A !important;
+}
+
+html.light-theme #session-room-view aside [class*="bg-white/[0.04]"],
+html.light-theme #session-room-view aside [class*="bg-white/[0.05]"],
+html.light-theme #session-room-view aside [class*="bg-white/[0.08]"] {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+html.light-theme #session-room-view aside input,
+html.light-theme #session-room-view aside select,
+html.light-theme #session-room-prejoin input,
+html.light-theme #session-room-prejoin select {
+  background-color: #FFFFFF !important;
+  border: 1px solid #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+html.light-theme #session-room-view aside input::placeholder,
+html.light-theme #session-room-prejoin input::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* Prejoin Device Test Cards in Light Mode */
+html.light-theme #session-room-prejoin [class*="bg-white/[0.04]"],
+html.light-theme #session-room-prejoin [class*="bg-white/[0.08]"] {
+  background-color: #F8FAFC !important;
+  border: 1px solid #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+html.light-theme #session-room-prejoin label,
+html.light-theme #session-room-prejoin .font-semibold {
+  color: #0F172A !important;
+}
+
+/* Video Stage Area: Keep deep cinematic slate in both modes so camera feeds & slides remain crisp */
+html.light-theme #session-room-view [data-stage="cinema"],
+html.light-theme #session-room-view .bg-gradient-to-br[class*="from-[#01090c]"],
+html.light-theme #session-room-prejoin .aspect-video {
+  background-image: none !important;
+  background-color: #070F1A !important;
+  border-color: #1E2E48 !important;
+}
+
+/* Text & controls inside cinema video tiles MUST remain bright white & neon */
+html.light-theme #session-room-view [data-stage="cinema"] .text-white,
+html.light-theme #session-room-view [data-stage="cinema"] .text-white\/90,
+html.light-theme #session-room-view [data-stage="cinema"] .text-white\/80,
+html.light-theme #session-room-view [data-stage="cinema"] .text-white\/70,
+html.light-theme #session-room-view [data-stage="cinema"] [class*="from-[#02181d]"] *,
+html.light-theme #session-room-view [data-stage="cinema"] [class*="from-[#041c22]"] *,
+html.light-theme #session-room-prejoin .aspect-video .text-white,
+html.light-theme #session-room-prejoin .aspect-video span {
+  color: #FFFFFF !important;
+}
+
+/* Bottom Control Dock Buttons in Light Mode */
+html.light-theme #session-room-view footer button[class*="bg-white/"]:not([class*="bg-emerald"]):not([class*="bg-rose"]) {
+  background-color: #F1F5F9 !important;
+  border: 1px solid #CBD5E1 !important;
+  color: #334155 !important;
+}
+
+html.light-theme #session-room-view footer button[class*="bg-white/"]:not([class*="bg-emerald"]):not([class*="bg-rose"]):hover {
+  background-color: #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+/* Header Action Buttons in Light Mode */
+html.light-theme #session-room-view header button[class*="bg-white/"]:not([class*="bg-rose"]),
+html.light-theme #session-room-prejoin header button[class*="bg-white/"] {
+  background-color: #F1F5F9 !important;
+  border: 1px solid #CBD5E1 !important;
+  color: #334155 !important;
+}
+
+html.light-theme #session-room-view header button[class*="bg-white/"]:not([class*="bg-rose"]):hover,
+html.light-theme #session-room-prejoin header button[class*="bg-white/"]:hover {
+  background-color: #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+/* View Mode Switcher in Light Mode */
+html.light-theme #session-room-view header [class*="bg-white/[0.08]"] {
+  background-color: #F1F5F9 !important;
+  border-color: #CBD5E1 !important;
+}
+
+/* Session Room Admin Governance Panel in Light Mode */
+html.light-theme #session-room-admin-governance-panel {
+  background-color: #FFFFFF !important;
+  border: 1px solid #CBD5E1 !important;
+  color: #0F172A !important;
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.08) !important;
+}
+
+html.light-theme #session-room-admin-governance-panel h4 {
+  color: #0F172A !important;
+}
+
+html.light-theme #session-room-admin-governance-panel [class*="bg-black/40"] {
+  background-color: #F8FAFC !important;
+  border: 1px solid #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+/* ========================================================
+   DARK THEME BASELINE & HIGH-CONTRAST CARD SEPARATION
+   ======================================================== */
+html:not(.light-theme) body {
+  color: #F8FAFC !important;
+  background-color: var(--app-bg, #070B14) !important;
+}
+
+/* Elevated glass cards and panels in Dark Mode */
+html:not(.light-theme) .glass-panel,
+html:not(.light-theme) .glass-card {
+  background-color: var(--panel-bg, #10192A) !important;
+  border: 1px solid var(--panel-border, #1E2E48) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+}
+
+html:not(.light-theme) .glass-panel-interactive,
+html:not(.light-theme) .glass-card-interactive {
+  background-color: var(--panel-bg, #10192A) !important;
+  border: 1px solid var(--panel-border, #1E2E48) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.2s ease,
+              box-shadow 0.2s ease,
+              background-color 0.2s ease;
+}
+
+html:not(.light-theme) .glass-panel-interactive:hover,
+html:not(.light-theme) .glass-card-interactive:hover {
+  background-color: #132036 !important;
+  border-color: var(--primary-accent) !important;
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--primary-accent) !important;
+  transform: translateY(-2px);
+}
+
+/* Inset sub-panels, metric boxes and chips inside dark mode cards */
+html:not(.light-theme) .glass-card [class*="bg-[var(--panel-bg)]"],
+html:not(.light-theme) .glass-panel [class*="bg-[var(--panel-bg)]"] {
+  background-color: rgba(9, 14, 25, 0.85) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Translucent dark sub-containers in dark mode */
+html:not(.light-theme) .bg-black\/20,
+html:not(.light-theme) .bg-black\/30,
+html:not(.light-theme) .bg-black\/40,
+html:not(.light-theme) .bg-black\/50,
+html:not(.light-theme) .bg-black\/60 {
+  background-color: rgba(9, 14, 25, 0.75) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* High-contrast table headers & borders in Dark Mode */
+html:not(.light-theme) table thead {
+  background-color: rgba(9, 14, 25, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-primary) !important;
+}
+
+html:not(.light-theme) input,
+html:not(.light-theme) textarea,
+html:not(.light-theme) select {
+  background-color: #0E1626 !important;
+  border-color: #1E2E48 !important;
+  color: #F8FAFC !important;
+}
+
+html:not(.light-theme) input:focus,
+html:not(.light-theme) textarea:focus,
+html:not(.light-theme) select:focus {
+  border-color: var(--primary-accent) !important;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.25) !important;
+}
+
+html:not(.light-theme) input::placeholder,
+html:not(.light-theme) textarea::placeholder {
+  color: #64748B !important;
+}
+
+/* ========================================================
+   ACCESSIBILITY & REDUCED MOTION
+   ======================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .glass-panel-interactive:hover,
+  .glass-card-interactive:hover {
+    transform: none !important;
+  }
+}
+
+/* ========================================================
+   CERTIFICATE PRINT ISOLATION (@media print)
+   ======================================================== */
+@media print {
+  @page {
+    size: landscape;
+    margin: 8mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 100% !important;
+    height: 100% !important;
+    width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  nav,
+  header,
+  aside,
+  button,
+  input,
+  select,
+  .top-app-bar,
+  .background-gradients,
+  .no-print,
+  [data-no-print="true"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  body > *:not(#root) {
+    display: none !important;
+  }
+
+  #root > div > div > aside,
+  #root > div > div > div > header,
+  #root > div > .top-app-bar,
+  #certificates-page > div:not(:has(#printable-certificate)),
+  #certificates-page > div > div:not(:has(#printable-certificate)) {
+    display: none !important;
+  }
+
+  #printable-certificate {
+    visibility: visible !important;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    margin: 0 !important;
+    padding: 8px !important;
+    background: #ffffff !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 99999999 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #printable-certificate > div {
+    width: 100% !important;
+    max-width: 1000px !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border-radius: 16px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #printable-certificate * {
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

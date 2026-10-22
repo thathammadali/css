@@ -1,0 +1,116 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { CertificateItem } from '../types';
+
+export const INITIAL_CERTIFICATES: CertificateItem[] = [
+  {
+    id: 'cert-01',
+    verificationCode: 'SEMS-849201',
+    title: 'Certificate of Technical Excellence & Active Participation',
+    sessionTitle: 'Annual Robotics & AI Symposium 2026',
+    recipientName: 'Sara Khan',
+    recipientRoll: '2024-CS-12',
+    recipientEmail: 'sara.khan@university.edu.pk',
+    recipientPrimaryEmail: 'sara.khan@university.edu.pk',
+    recipientSecondaryEmail: 'sara.khan.alumni@gmail.com',
+    issueDate: 'October 16, 2026',
+    societyWing: 'Robotics & AI Society',
+    isValid: true,
+    status: 'approved',
+    templateStyle: 'classic_ivory',
+    templateFormat: 'html',
+    grade: 'Distinction',
+    generatedAutomatically: true,
+    approvedBy: 'Alex Morgan (President)',
+    approvedAt: 'October 16, 2026',
+    signatories: [
+      {
+        name: 'Alex Morgan',
+        title: 'President, Robotics Society',
+        role: 'admin',
+        approved: true,
+        signedAt: 'October 16, 2026',
+      },
+      {
+        name: 'Prof. Dean Taylor',
+        title: 'Faculty Patron & Advisor',
+        role: 'super_admin',
+        approved: true,
+        signedAt: 'October 16, 2026',
+      },
+    ],
+  },
+  {
+    id: 'cert-02',
+    verificationCode: 'SEMS-392184',
+    title: 'Certificate of Hands-on Lab Completion',
+    sessionTitle: 'UI/UX Design Sprint & Product Critique',
+    recipientName: 'Jordan Lee',
+    recipientRoll: '2024-CS-42',
+    recipientEmail: 'jordan.lee@university.edu.pk',
+    recipientPrimaryEmail: 'jordan.lee@university.edu.pk',
+    recipientSecondaryEmail: 'sportszaab@gmail.com', // Permanent personal email for graduate recovery
+    issueDate: 'October 18, 2026',
+    societyWing: 'Design & Creative Media Club',
+    isValid: true,
+    status: 'approved',
+    templateStyle: 'modern_tech',
+    templateFormat: 'html',
+    grade: 'Merit',
+    generatedAutomatically: true,
+    approvedBy: 'Alex Morgan (President)',
+    approvedAt: 'October 18, 2026',
+    signatories: [
+      {
+        name: 'Alex Morgan',
+        title: 'President, Creative Media Club',
+        role: 'admin',
+        approved: true,
+        signedAt: 'October 18, 2026',
+      },
+      {
+        name: 'Prof. Dean Taylor',
+        title: 'Faculty Patron & Advisor',
+        role: 'super_admin',
+        approved: true,
+        signedAt: 'October 18, 2026',
+      },
+    ],
+  },
+  {
+    id: 'cert-03',
+    verificationCode: 'SEMS-510492',
+    title: 'Certificate of Workshop Attendance',
+    sessionTitle: 'Annual Robotics & AI Symposium 2026',
+    recipientName: 'Zainab Fatima',
+    recipientRoll: '2024-SE-05',
+    recipientEmail: 'zainab.fatima@university.edu.pk',
+    recipientPrimaryEmail: 'zainab.fatima@university.edu.pk',
+    recipientSecondaryEmail: 'zainab.personal@gmail.com',
+    issueDate: 'October 16, 2026',
+    societyWing: 'Robotics & AI Society',
+    isValid: false,
+    status: 'pending_approval',
+    templateStyle: 'ornate_image_frame',
+    templateFormat: 'image',
+    grade: 'Pass',
+    generatedAutomatically: true,
+    signatories: [
+      {
+        name: 'Alex Morgan',
+        title: 'President, Robotics Society',
+        role: 'admin',
+        approved: false,
+      },
+      {
+        name: 'Prof. Dean Taylor',
+        title: 'Faculty Patron & Advisor',
+        role: 'super_admin',
+        approved: false,
+      },
+    ],
+  },
+];
