@@ -21,7 +21,8 @@ def get_current_user_optional(
     user_id = decode_access_token(token)
     if user_id is None:
         return None
-    return db.get(User, user_id)
+    user = db.get(User, user_id)
+    return user if user is not None and user.is_active else None
 
 
 def to_user_out(user: User) -> UserOut:
@@ -31,6 +32,11 @@ def to_user_out(user: User) -> UserOut:
         primary_email=user.primary_email,
         secondary_email=user.secondary_email,
         position_title=user.position_title,
+        roll_number=user.roll_number,
+        department=user.department,
+        phone=user.phone,
+        institution=user.institution,
+        is_active=user.is_active,
         role=user.role.name,
     )
 
@@ -47,7 +53,7 @@ def get_current_user(
     if user_id is None:
         raise error
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or not user.is_active:
         raise error
     return user
 
@@ -107,6 +113,8 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
             detail="Incorrect email or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account is deactivated.")
     return TokenOut(access_token=create_access_token(user.id))
 
 
@@ -121,8 +129,8 @@ def update_me(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if data.position_title is not None:
-        user.position_title = data.position_title
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(user, field, value)
     db.commit()
     db.refresh(user)
     return to_user_out(user)

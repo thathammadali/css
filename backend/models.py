@@ -1,6 +1,6 @@
 from sqlalchemy import Boolean, Column, Integer, String, Text, Numeric, ForeignKey, DateTime, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import false, func
+from sqlalchemy.sql import false, func, true
 from database import Base
 
 
@@ -17,6 +17,11 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
     position_title = Column(String, nullable=True)  # e.g. "President", "VP", "GS", a teacher's name/title
+    roll_number = Column(String, nullable=True)
+    department = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    institution = Column(String, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, server_default=true())
     primary_email = Column(String, unique=True, nullable=False, index=True)
     secondary_email = Column(String, unique=True, nullable=True)
     hashed_password = Column(String, nullable=False)
@@ -37,6 +42,8 @@ class Event(Base):
     status = Column(String, nullable=False, default="DRAFT")  # DRAFT, PUBLISHED, UPCOMING, ...
     form_schema = Column(JSON(none_as_null=True), nullable=True)
     form_version = Column(Integer, nullable=False, default=0, server_default="0")
+    location_type = Column(String, nullable=True)  # on_campus, virtual, hybrid
+    certificate_template = Column(JSON(none_as_null=True), nullable=True)
 
     @property
     def has_form(self) -> bool:
@@ -146,3 +153,30 @@ class Registration(Base):
     @property
     def user_primary_email(self) -> str:
         return self.user.primary_email
+
+
+class Certificate(Base):
+    __tablename__ = "certificates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, nullable=False, index=True)
+    event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    recipient_name = Column(String, nullable=False)
+    status_tag = Column(String, nullable=True)
+    student_id = Column(String, nullable=True)
+    category = Column(String, nullable=True)
+    issued_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    issued_at = Column(DateTime(timezone=True), server_default=func.now())
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    revoke_reason = Column(String, nullable=True)
+
+    event = relationship("Event")
+
+    @property
+    def event_title(self) -> str:
+        return self.event.title
+
+    @property
+    def is_valid(self) -> bool:
+        return self.revoked_at is None

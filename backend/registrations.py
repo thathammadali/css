@@ -70,7 +70,14 @@ def register_for_session(
     if existing:
         raise HTTPException(status_code=409, detail="You are already registered for this session.")
 
+    now = datetime.now(timezone.utc)
     event = event_session.event
+    deadline = event.registration_deadline
+    if deadline is not None and now > deadline:
+        raise HTTPException(status_code=400, detail="The registration deadline has passed.")
+    capacity = event_session.capacity or event.capacity
+    if capacity and capacity > 0 and event_session.registered_count >= capacity:
+        raise HTTPException(status_code=409, detail="This session is full.")
     answers = None
     if event.form_schema is not None:
         if data is None:
@@ -82,7 +89,7 @@ def register_for_session(
     if answers is not None:
         registration.answers = answers
         registration.answers_form_version = event.form_version
-        registration.answers_updated_at = datetime.now(timezone.utc)
+        registration.answers_updated_at = now
     db.add(registration)
     db.commit()
     db.refresh(registration)
