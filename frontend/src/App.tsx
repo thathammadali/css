@@ -38,11 +38,11 @@ import {
 import { INITIAL_REGISTRANTS } from './data/mockRegistrations';
 import { INITIAL_CERTIFICATES } from './data/mockCertificates';
 import { DEFAULT_REGISTRATION_FORM } from './data/mockForms';
-import { identifyRoleFromEmail } from './utils/roleUtils';
+import { getRoleDisplayName, identifyRoleFromEmail } from './utils/roleUtils';
 import { userService } from './services/userService';
 import { eventService } from './services/eventService';
 import { formService } from './services/formService';
-import { eventsApi } from './services/apiClient';
+import { apiFetch, getStoredAuthToken, setStoredAuthToken } from './services/apiClient';
 
 const STORAGE_LOGIN_KEY = 'sems_is_logged_in';
 const STORAGE_REGISTRANTS_KEY = 'sems_registrants';
@@ -60,6 +60,7 @@ export default function App() {
       if (isLoggedIn && savedSession) {
         const parsedUser: AuthUser = JSON.parse(savedSession);
         if (parsedUser && (parsedUser.email || parsedUser.primaryEmail)) {
+          if (parsedUser.isBackendConnected && !getStoredAuthToken()) return null;
           return parsedUser;
         }
       }
@@ -76,6 +77,9 @@ export default function App() {
       if (isLoggedIn && savedSession) {
         const parsedUser: AuthUser = JSON.parse(savedSession);
         if (parsedUser && (parsedUser.email || parsedUser.primaryEmail)) {
+          if (parsedUser.isBackendConnected) {
+            return getStoredAuthToken() ? ((parsedUser.role as DashboardRole) || 'student') : 'guest';
+          }
           const identified = identifyRoleFromEmail(parsedUser.primaryEmail || parsedUser.email);
           return identified.dashboardRole;
         }
@@ -102,23 +106,16 @@ export default function App() {
   // Authoritative Event hierarchy state: Event -> Multiple Sessions
   const [events, setEvents] = useState<EventItem[]>(() => eventService.getEvents());
 
-  // Public event browsing: Fetch live events from backend tunnel (guests can browse without token)
+  // Live events from the backend. Re-runs on login/logout so admins see drafts and guests don't.
   useEffect(() => {
     let isMounted = true;
-    eventsApi
-      .getEvents()
-      .then((remoteEvents) => {
-        if (isMounted && remoteEvents && remoteEvents.length > 0) {
-          setEvents(remoteEvents);
-        }
-      })
-      .catch(() => {
-        // Fallback to local mock data
-      });
+    eventService.refreshFromBackend().then((ok) => {
+      if (ok && isMounted) setEvents(eventService.getEvents());
+    });
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [user?.primaryEmail]);
 
   // Derived visible events & sessions respecting Event lifecycle states
   const visibleEvents = useMemo(() => {
@@ -440,9 +437,17 @@ export default function App() {
     },
     isNewSignup?: boolean
   ) => {
-    // Determine the role directly from user's email address (prefer primaryEmail)
     const effectiveEmail = authUser.primaryEmail || authUser.email;
-    const identified = identifyRoleFromEmail(effectiveEmail);
+    // With a live backend the role from /auth/me is authoritative. The email lookup is only for offline mock accounts.
+    const emailIdentified = identifyRoleFromEmail(effectiveEmail);
+    const identified =
+      authUser.isBackendConnected && authUser.role
+        ? {
+            userRole: authUser.role,
+            dashboardRole: authUser.role as DashboardRole,
+            roleDisplayName: getRoleDisplayName(authUser.role as DashboardRole),
+          }
+        : emailIdentified;
     const existingAccount = userService.findUserByEmail(effectiveEmail);
     const secondary = authUser.secondaryEmail || existingAccount?.secondaryEmail || undefined;
 
@@ -516,6 +521,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    setStoredAuthToken(null);
     setUser(null);
     setCurrentRole('guest');
     try {
@@ -535,6 +541,28 @@ export default function App() {
     showNotification('Logged out successfully. Please sign in to continue.');
     navigate('#/login');
   };
+
+  // Token expired or revoked: apiFetch fires this event after a 401 on a logged-in request.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      handleLogout();
+      showNotification('Your session expired. Please sign in again.');
+    };
+    window.addEventListener('sems:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('sems:unauthorized', onUnauthorized);
+  }, []);
+
+  // Re-validate the saved backend session on startup: logs out deactivated users, refreshes the role.
+  useEffect(() => {
+    if (!user?.isBackendConnected) return;
+    apiFetch('/auth/me')
+      .then(async (res) => {
+        if (!res.ok) return; // a 401 fires 'sems:unauthorized' inside apiFetch
+        const me = await res.json();
+        if (me?.role && me.role !== currentRole) setCurrentRole(me.role as DashboardRole);
+      })
+      .catch(() => {});
+  }, [user?.primaryEmail]);
 
   const handleNavigateToSession = (sessionId: string) => {
     setTargetSessionId(sessionId);

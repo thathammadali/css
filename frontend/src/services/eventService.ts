@@ -6,6 +6,7 @@
 import { EventItem, SessionItem, EventStatus, DashboardRole, SessionRecordingStatus } from '../types';
 import { INITIAL_EVENTS } from '../data/mockEvents';
 import { notificationService } from './notificationService';
+import { eventsApi } from './apiClient';
 
 const EVENTS_STORAGE_KEY = 'sems_events_data';
 
@@ -42,6 +43,14 @@ export const eventService = {
         parentEventTitle: evt.title,
       })),
     }));
+  },
+
+  /** Pull live events from the backend into the local cache the screens read. Returns false if offline. */
+  async refreshFromBackend(): Promise<boolean> {
+    const live = await eventsApi.fetchLive();
+    if (!live) return false;
+    this.saveEvents(live);
+    return true;
   },
 
   /**
