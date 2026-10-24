@@ -1,7 +1,11 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+
+LocationType = Literal["on_campus", "virtual", "hybrid"]
 
 
 class SignupRequest(BaseModel):
@@ -33,11 +37,20 @@ class UserOut(BaseModel):
     primary_email: str
     secondary_email: str | None = None
     position_title: str | None = None
+    roll_number: str | None = None
+    department: str | None = None
+    phone: str | None = None
+    institution: str | None = None
+    is_active: bool = True
     role: str
 
 
 class ProfileUpdate(BaseModel):
-    position_title: str | None = None
+    position_title: str | None = Field(default=None, max_length=100)
+    roll_number: str | None = Field(default=None, max_length=30)
+    department: str | None = Field(default=None, max_length=100)
+    phone: str | None = Field(default=None, max_length=20)
+    institution: str | None = Field(default=None, max_length=150)
 
 
 class TokenOut(BaseModel):
@@ -53,6 +66,7 @@ class EventCreate(BaseModel):
     capacity: int | None = None
     registration_deadline: datetime | None = None
     fee_amount: Decimal = Decimal("0")
+    location_type: LocationType | None = None
 
 
 class EventOut(BaseModel):
@@ -62,6 +76,9 @@ class EventOut(BaseModel):
     category: str | None
     organizer: str | None
     status: str
+    has_form: bool = False
+    form_version: int = 0
+    location_type: str | None = None
     capacity: int | None
     registration_deadline: datetime | None
     fee_amount: Decimal
@@ -145,6 +162,11 @@ class RegistrationOut(BaseModel):
     user_full_name: str
     user_primary_email: str
     status: str
+    attended: bool = False
+    answers: dict | None = None
+    answers_outdated: bool = False
+    edit_count: int = 0
+    answers_updated_at: datetime | None = None
     receipt_uploaded: bool = False
     payment_rejection_reason: str | None = None
     created_at: datetime
@@ -155,3 +177,138 @@ class RegistrationOut(BaseModel):
 
 class PaymentReject(BaseModel):
     reason: str = Field(min_length=3, max_length=300)
+
+
+class AttendanceUpdate(BaseModel):
+    attended: bool
+
+
+class AttendanceBulk(BaseModel):
+    registration_ids: list[int] = Field(min_length=1, max_length=500)
+    attended: bool = True
+
+
+AnswerValue = str | int | float | bool | None
+
+
+class FormField(BaseModel):
+    key: str = Field(pattern=r"^[a-z][a-z0-9_]{0,39}$")
+    label: str = Field(min_length=1, max_length=200)
+    type: Literal["text", "long_text", "number", "dropdown", "checkbox"]
+    required: bool = False
+    options: list[str] | None = None
+
+    @model_validator(mode="after")
+    def check_options(self):
+        if self.type == "dropdown":
+            if not self.options or len(set(self.options)) != len(self.options):
+                raise ValueError("Dropdown needs a non-empty list of unique options")
+        elif self.options:
+            raise ValueError("Only dropdown fields can have options")
+        return self
+
+
+class FormSchema(BaseModel):
+    fields: list[FormField] = Field(min_length=1, max_length=30)
+
+    @model_validator(mode="after")
+    def unique_keys(self):
+        keys = [field.key for field in self.fields]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Field keys must be unique")
+        return self
+
+
+class FormUpdate(BaseModel):
+    form: FormSchema | None = None
+    on_existing: Literal["keep", "delete"] = "keep"
+
+
+class FormOut(BaseModel):
+    form: FormSchema | None
+    form_version: int
+
+
+class RegistrationCreate(BaseModel):
+    answers: dict[str, AnswerValue] = {}
+
+
+class AnswersUpdate(BaseModel):
+    answers: dict[str, AnswerValue]
+
+
+class EventUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=200)
+    description: str | None = None
+    category: str | None = None
+    organizer: str | None = None
+    capacity: int | None = None
+    registration_deadline: datetime | None = None
+    fee_amount: Decimal | None = Field(default=None, ge=0)
+    location_type: LocationType | None = None
+
+
+class SessionUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=200)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    timezone: str | None = None
+    location: str | None = None
+    capacity: int | None = None
+    meeting_link: str | None = None
+    speaker: str | None = Field(default=None, max_length=200)
+
+    @field_validator("meeting_link")
+    @classmethod
+    def link_must_be_http(cls, v: str | None) -> str | None:
+        if v and not v.startswith(("http://", "https://")):
+            raise ValueError("Meeting link must start with http:// or https://")
+        return v
+
+
+class RoleUpdate(BaseModel):
+    role: Literal["student", "admin", "super_admin"]
+
+
+class StatusUpdate(BaseModel):
+    is_active: bool
+
+
+class CertificateIssue(BaseModel):
+    user_ids: list[int] | None = Field(default=None, max_length=500)
+    category: str | None = Field(default=None, max_length=100)
+
+
+class CertificateRevoke(BaseModel):
+    reason: str = Field(min_length=3, max_length=300)
+
+
+class CertificateOut(BaseModel):
+    id: int
+    code: str
+    event_id: int
+    event_title: str
+    user_id: int | None
+    recipient_name: str
+    status_tag: str | None
+    student_id: str | None
+    category: str | None
+    issued_at: datetime
+    is_valid: bool
+    revoked_at: datetime | None
+    revoke_reason: str | None
+
+    class Config:
+        from_attributes = True
+
+
+class CertificateVerifyOut(BaseModel):
+    valid: bool
+    recipient_name: str | None = None
+    event_title: str | None = None
+    category: str | None = None
+    issued_at: datetime | None = None
+
+
+class TemplateUpdate(BaseModel):
+    template: dict | None
