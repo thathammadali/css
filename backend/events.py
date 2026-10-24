@@ -1,10 +1,13 @@
+from datetime import date, datetime, time, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from auth import get_current_user_optional, require_roles
 from database import get_db
 from models import Event, EventSession, Registration, User
-from schemas import EventCreate, EventOut, SessionCreate, SessionOut
+from schemas import EventCreate, EventOut, EventUpdate, SessionCreate, SessionOut, SessionUpdate
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -27,6 +30,7 @@ def create_event(
         capacity=data.capacity,
         registration_deadline=data.registration_deadline,
         fee_amount=data.fee_amount,
+        location_type=data.location_type,
         created_by=user.id,
         status="DRAFT",
     )
@@ -38,12 +42,36 @@ def create_event(
 
 @router.get("", response_model=list[EventOut])
 def list_events(
+    category: str | None = None,
+    location_type: str | None = None,
+    is_free: bool | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
     user: User | None = Depends(get_current_user_optional),
 ):
+    pkt = timezone(timedelta(hours=5))
     query = db.query(Event)
     if not _is_admin(user):
         query = query.filter(Event.status != "DRAFT")
+    if category:
+        query = query.filter(Event.category == category)
+    if location_type:
+        query = query.filter(Event.location_type == location_type)
+    if is_free is True:
+        query = query.filter(Event.fee_amount == 0)
+    elif is_free is False:
+        query = query.filter(Event.fee_amount > 0)
+    if date_from or date_to:
+        conditions = []
+        if date_from:
+            conditions.append(EventSession.ends_at >= datetime.combine(date_from, time.min, tzinfo=pkt))
+        if date_to:
+            conditions.append(
+                EventSession.starts_at
+                < datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=pkt)
+            )
+        query = query.filter(Event.sessions.any(and_(*conditions)))
     return query.order_by(Event.created_at.desc()).all()
 
 
@@ -138,3 +166,50 @@ def list_sessions(
             out.meeting_link = None
         result.append(out)
     return result
+
+
+@router.patch("/{event_id}", response_model=EventOut)
+def update_event(
+    event_id: int,
+    data: EventUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "super_admin")),
+):
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        if field in ("title", "fee_amount") and value is None:
+            raise HTTPException(status_code=400, detail=f"{field} cannot be empty.")
+        setattr(event, field, value)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+@router.patch("/{event_id}/sessions/{session_id}", response_model=SessionOut)
+def update_session(
+    event_id: int,
+    session_id: int,
+    data: SessionUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "super_admin")),
+):
+    event_session = db.get(EventSession, session_id)
+    if event_session is None or event_session.event_id != event_id:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    changes = data.model_dump(exclude_unset=True)
+    for field in ("title", "starts_at", "ends_at", "timezone"):
+        if field in changes and changes[field] is None:
+            raise HTTPException(status_code=400, detail=f"{field} cannot be empty.")
+    for field, value in changes.items():
+        setattr(event_session, field, value)
+    if event_session.ends_at <= event_session.starts_at:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Session end time must be after the start time.")
+    if event_session.capacity and event_session.capacity < event_session.registered_count:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Capacity cannot be lower than the current registrations.")
+    db.commit()
+    db.refresh(event_session)
+    return event_session
