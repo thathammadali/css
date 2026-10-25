@@ -12,7 +12,6 @@ import {
   FileCode2,
   Users,
   Info,
-  Radio,
   MoreHorizontal,
   X,
   ShieldCheck,
@@ -57,7 +56,6 @@ export const Navigation: React.FC<NavigationProps> = ({
           return [
             { id: 'home', label: 'Dashboard', icon: Home },
             { id: 'sessions', label: 'Sessions', icon: Calendar },
-            { id: 'session-room', label: 'Session Rooms', icon: Radio },
             { id: 'registrants', label: 'My Registrations', icon: FileCheck2 },
             { id: 'certificates', label: 'My Certificates', icon: Award },
             { id: 'profile', label: 'Profile', icon: User },
@@ -67,7 +65,6 @@ export const Navigation: React.FC<NavigationProps> = ({
         return [
           { id: 'home', label: 'Dashboard', icon: Home },
           { id: 'sessions', label: 'Sessions', icon: Calendar },
-          { id: 'session-room', label: 'Session Rooms', icon: Radio },
           { id: 'certificates', label: 'Verify Credential', icon: Award },
           { id: 'about', label: 'About', icon: Info },
         ];
@@ -76,7 +73,6 @@ export const Navigation: React.FC<NavigationProps> = ({
         return [
           { id: 'home', label: 'Dashboard', icon: Home },
           { id: 'sessions', label: 'Sessions', icon: Calendar },
-          { id: 'session-room', label: 'Session Rooms', icon: Radio },
           { id: 'registrants', label: 'My Registrations', icon: FileCheck2 },
           { id: 'certificates', label: 'My Certificates', icon: Award },
           { id: 'profile', label: 'Profile', icon: User },
@@ -87,7 +83,6 @@ export const Navigation: React.FC<NavigationProps> = ({
         return [
           { id: 'home', label: 'Overview', icon: Home },
           { id: 'sessions', label: 'Sessions', icon: Calendar },
-          { id: 'session-room', label: 'Session Rooms', icon: Radio },
           { id: 'registrants', label: 'Registrants & Fees', icon: Users },
           { id: 'form-builder', label: 'Form Builder', icon: FileCode2 },
           { id: 'certificates', label: 'Certificates & Templates', icon: Award },
@@ -100,7 +95,6 @@ export const Navigation: React.FC<NavigationProps> = ({
         return [
           { id: 'home', label: 'Overview', icon: Home },
           { id: 'sessions', label: 'Sessions', icon: Calendar },
-          { id: 'session-room', label: 'Session Rooms', icon: Radio },
           { id: 'registrants', label: 'Registrants & Fees', icon: Users },
           { id: 'form-builder', label: 'Form Builder', icon: FileCode2 },
           { id: 'certificates', label: 'Certificates & Templates', icon: Award },

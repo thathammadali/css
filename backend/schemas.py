@@ -89,6 +89,35 @@ class EventOut(BaseModel):
         from_attributes = True
 
 
+class MeetingLink(BaseModel):
+    platform: Literal["zoom", "meet", "youtube", "teams", "other"] = "other"
+    label: str | None = Field(default=None, max_length=60)
+    url: str = Field(max_length=500)
+    public: bool = False
+
+    @field_validator("url")
+    @classmethod
+    def url_must_be_http(cls, v):
+        v = v.strip()
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("Link must start with http:// or https://")
+        return v
+
+    @model_validator(mode="after")
+    def detect_platform(self):
+        if self.platform == "other":
+            u = self.url.lower()
+            if "zoom.us" in u:
+                self.platform = "zoom"
+            elif "meet.google.com" in u:
+                self.platform = "meet"
+            elif "youtube.com" in u or "youtu.be" in u:
+                self.platform = "youtube"
+            elif "teams.microsoft.com" in u or "teams.live.com" in u:
+                self.platform = "teams"
+        return self
+
+
 class SessionCreate(BaseModel):
     title: str = Field(min_length=3, max_length=200)
     starts_at: datetime
@@ -97,6 +126,7 @@ class SessionCreate(BaseModel):
     location: str | None = None
     capacity: int | None = None
     meeting_link: str | None = None
+    meeting_links: list[MeetingLink] | None = Field(default=None, max_length=5)
     speaker: str | None = Field(default=None, max_length=200)
 
     @field_validator("meeting_link")
@@ -117,8 +147,14 @@ class SessionOut(BaseModel):
     location: str | None
     capacity: int | None
     meeting_link: str | None = None
+    meeting_links: list[MeetingLink] = Field(default_factory=list)
     speaker: str | None = None
     registered_count: int = 0
+
+    @field_validator("meeting_links", mode="before")
+    @classmethod
+    def none_to_empty(cls, v):
+        return v or []
 
     class Config:
         from_attributes = True
@@ -256,6 +292,7 @@ class SessionUpdate(BaseModel):
     location: str | None = None
     capacity: int | None = None
     meeting_link: str | None = None
+    meeting_links: list[MeetingLink] | None = Field(default=None, max_length=5)
     speaker: str | None = Field(default=None, max_length=200)
 
     @field_validator("meeting_link")

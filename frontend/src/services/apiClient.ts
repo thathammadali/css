@@ -4,6 +4,7 @@
  */
 
 import { UserAccount, DashboardRole, EventItem, SessionItem, EventStatus, SessionStatus } from '../types';
+import { DEMO_MODE } from '../config';
 import { userService } from './userService';
 import { INITIAL_EVENTS } from '../data/mockEvents';
 
@@ -179,6 +180,9 @@ export const authApi = {
 
     // Backend unreachable: offline prototype accounts (UI shows the Offline / Mock badge)
     setStoredAuthToken(null);
+    if (!DEMO_MODE) {
+      return { success: false, error: 'Cannot reach the server. Please try again in a moment.' };
+    }
     const localAuth = userService.authenticate(normalizedEmail, password);
     if (localAuth.success && localAuth.user) {
       return { success: true, user: localAuth.user, isBackendConnected: false };
@@ -222,6 +226,9 @@ export const authApi = {
       return { success: true, user, isBackendConnected: true };
     }
 
+    if (!DEMO_MODE) {
+      return { success: false, error: 'Cannot reach the server. Please try again in a moment.' };
+    }
     const registered = userService.registerUser(params);
     return { success: true, user: registered, isBackendConnected: false };
   },
@@ -336,6 +343,7 @@ export function mapBackendSession(
     location: raw.location || 'TBA',
     meetingUrl: meetingLink || undefined,
     meeting_link: meetingLink,
+    meeting_links: Array.isArray(raw.meeting_links) ? raw.meeting_links : [],
     speaker: raw.speaker ?? null,
     registered_count: registered,
     status,
@@ -438,7 +446,7 @@ export const eventsApi = {
     } catch {
       // ignore
     }
-    return INITIAL_EVENTS;
+    return DEMO_MODE ? INITIAL_EVENTS : [];
   },
 
   async getEventById(eventId: string): Promise<EventItem | null> {
@@ -510,6 +518,7 @@ export const eventsApi = {
       location?: string;
       capacity?: number | null;
       meetingLink?: string;
+      meetingLinks?: { url: string; platform?: string; label?: string; public?: boolean }[];
       speaker?: string;
     }
   ): Promise<SessionItem> {
@@ -521,6 +530,7 @@ export const eventsApi = {
       location: input.location || null,
       capacity: input.capacity || null,
       meeting_link: input.meetingLink || null,
+      meeting_links: input.meetingLinks && input.meetingLinks.length ? input.meetingLinks : undefined,
       speaker: input.speaker || null,
     });
     return mapBackendSession(raw, eventId);

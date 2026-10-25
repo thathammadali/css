@@ -22,6 +22,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { EventItem, SessionItem, DashboardRole, EventStatus } from '../../types';
+import MeetingLinks from '../MeetingLinks';
 
 interface EventDetailPageProps {
   event: EventItem;
@@ -389,22 +390,9 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between pt-1 border-t border-white/[0.04]">
-                    {sess.meeting_link ? (
-                      <a
-                        href={sess.meeting_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-white text-[11px] font-medium transition-all"
-                        title="Open Confirmed Meeting Link"
-                      >
-                        <Video className="w-3 h-3 text-emerald-400" />
-                        <span>Join Link</span>
-                        <ExternalLink className="w-2.5 h-2.5 opacity-70" />
-                      </a>
-                    ) : <span />}
+                    <MeetingLinks session={sess} />
 
-                    <span className="text-[var(--primary-accent)] font-medium inline-flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                    <span className="ml-auto text-[var(--primary-accent)] font-medium inline-flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                       Session Details <ArrowRight className="w-3.5 h-3.5" />
                     </span>
                   </div>

@@ -71,6 +71,7 @@ class EventSession(Base):
     capacity = Column(Integer, nullable=True)  # falls back to Event.capacity if not set
     meeting_link = Column(String, nullable=True)
     speaker = Column(String, nullable=True)
+    meeting_links = Column(JSON(none_as_null=True), nullable=True)
 
     registrations = relationship("Registration", viewonly=True)
 

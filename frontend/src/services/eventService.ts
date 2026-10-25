@@ -4,6 +4,7 @@
  */
 
 import { EventItem, SessionItem, EventStatus, DashboardRole, SessionRecordingStatus } from '../types';
+import { DEMO_MODE } from '../config';
 import { INITIAL_EVENTS } from '../data/mockEvents';
 import { notificationService } from './notificationService';
 import { eventsApi } from './apiClient';
@@ -34,6 +35,8 @@ export const eventService = {
       // Fallback to initial events
     }
 
+    if (!DEMO_MODE) return [];
+
     // Initialize with verified INITIAL_EVENTS
     return INITIAL_EVENTS.map((evt) => ({
       ...evt,
@@ -48,7 +51,10 @@ export const eventService = {
   /** Pull live events from the backend into the local cache the screens read. Returns false if offline. */
   async refreshFromBackend(): Promise<boolean> {
     const live = await eventsApi.fetchLive();
-    if (!live) return false;
+    if (!live) {
+      console.warn('[SEMS] Live events refresh failed; showing cached data.');
+      return false;
+    }
     this.saveEvents(live);
     return true;
   },

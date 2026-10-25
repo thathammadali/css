@@ -14,14 +14,13 @@ from users import router as users_router
 app = FastAPI(title="SeMS API")
 
 origins = [
-    "http://localhost:3000",
-    "http://localhost:5173",
     "https://ais-dev-6vwfj5vktuwcrlsigz6d2a-703931185299.asia-northeast1.run.app",
     "https://ais-pre-6vwfj5vktuwcrlsigz6d2a-703931185299.asia-northeast1.run.app",
 ]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_methods=["*"],
     allow_headers=["*"],
 )

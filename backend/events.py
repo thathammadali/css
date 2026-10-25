@@ -16,6 +16,16 @@ def _is_admin(user: User | None) -> bool:
     return user is not None and user.role.name in ("admin", "super_admin")
 
 
+def _links_payload(links, legacy):
+    """Returns (links_json, primary_url). meeting_links wins over the legacy single field."""
+    if links is not None:
+        dumped = [l.model_dump() for l in links]
+        return (dumped or None), (dumped[0]["url"] if dumped else None)
+    if legacy:
+        return [{"platform": "other", "label": None, "url": legacy, "public": False}], legacy
+    return None, None
+
+
 @router.post("", response_model=EventOut, status_code=status.HTTP_201_CREATED)
 def create_event(
     data: EventCreate,
@@ -116,6 +126,7 @@ def create_session(
         raise HTTPException(status_code=404, detail="Event not found.")
     if data.ends_at <= data.starts_at:
         raise HTTPException(status_code=400, detail="Session end time must be after the start time.")
+    links, primary = _links_payload(data.meeting_links, data.meeting_link)
     new_session = EventSession(
         event_id=event_id,
         title=data.title,
@@ -124,7 +135,8 @@ def create_session(
         timezone=data.timezone,
         location=data.location,
         capacity=data.capacity,
-        meeting_link=data.meeting_link,
+        meeting_link=primary,
+        meeting_links=links,
         speaker=data.speaker,
     )
     db.add(new_session)
@@ -164,6 +176,7 @@ def list_sessions(
         out = SessionOut.model_validate(s)
         if not admin and s.id not in confirmed_ids:
             out.meeting_link = None
+            out.meeting_links = [link for link in out.meeting_links if link.public]
         result.append(out)
     return result
 
@@ -204,6 +217,15 @@ def update_session(
             raise HTTPException(status_code=400, detail=f"{field} cannot be empty.")
     for field, value in changes.items():
         setattr(event_session, field, value)
+    if "meeting_links" in changes:
+        links = changes["meeting_links"] or []
+        event_session.meeting_links = links or None
+        event_session.meeting_link = links[0]["url"] if links else None
+    elif "meeting_link" in changes:
+        legacy = changes["meeting_link"]
+        event_session.meeting_links = (
+            [{"platform": "other", "label": None, "url": legacy, "public": False}] if legacy else None
+        )
     if event_session.ends_at <= event_session.starts_at:
         db.rollback()
         raise HTTPException(status_code=400, detail="Session end time must be after the start time.")

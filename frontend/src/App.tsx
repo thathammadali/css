@@ -39,6 +39,7 @@ import { INITIAL_REGISTRANTS } from './data/mockRegistrations';
 import { INITIAL_CERTIFICATES } from './data/mockCertificates';
 import { DEFAULT_REGISTRATION_FORM } from './data/mockForms';
 import { getRoleDisplayName, identifyRoleFromEmail } from './utils/roleUtils';
+import { DEMO_MODE } from './config';
 import { userService } from './services/userService';
 import { eventService } from './services/eventService';
 import { formService } from './services/formService';
@@ -60,6 +61,7 @@ export default function App() {
       if (isLoggedIn && savedSession) {
         const parsedUser: AuthUser = JSON.parse(savedSession);
         if (parsedUser && (parsedUser.email || parsedUser.primaryEmail)) {
+          if (!DEMO_MODE && !parsedUser.isBackendConnected) return null;
           if (parsedUser.isBackendConnected && !getStoredAuthToken()) return null;
           return parsedUser;
         }
@@ -77,6 +79,7 @@ export default function App() {
       if (isLoggedIn && savedSession) {
         const parsedUser: AuthUser = JSON.parse(savedSession);
         if (parsedUser && (parsedUser.email || parsedUser.primaryEmail)) {
+          if (!DEMO_MODE && !parsedUser.isBackendConnected) return 'guest';
           if (parsedUser.isBackendConnected) {
             return getStoredAuthToken() ? ((parsedUser.role as DashboardRole) || 'student') : 'guest';
           }
@@ -106,14 +109,25 @@ export default function App() {
   // Authoritative Event hierarchy state: Event -> Multiple Sessions
   const [events, setEvents] = useState<EventItem[]>(() => eventService.getEvents());
 
-  // Live events from the backend. Re-runs on login/logout so admins see drafts and guests don't.
+  // Live events from the backend. Re-runs on login/logout, when the tab regains focus, and every 60 s.
   useEffect(() => {
     let isMounted = true;
-    eventService.refreshFromBackend().then((ok) => {
-      if (ok && isMounted) setEvents(eventService.getEvents());
-    });
+    const load = () =>
+      eventService.refreshFromBackend().then((ok) => {
+        if (ok && isMounted) setEvents(eventService.getEvents());
+      });
+    load();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', load);
+    const timer = window.setInterval(load, 60000);
     return () => {
       isMounted = false;
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', load);
+      window.clearInterval(timer);
     };
   }, [user?.primaryEmail]);
 
@@ -137,7 +151,7 @@ export default function App() {
     } catch (e) {
       console.warn('Failed to load registrants from localStorage', e);
     }
-    return INITIAL_REGISTRANTS;
+    return DEMO_MODE ? INITIAL_REGISTRANTS : [];
   });
 
   // Shared certificates state with localStorage persistence
@@ -151,7 +165,7 @@ export default function App() {
     } catch (e) {
       console.warn('Failed to load certificates from localStorage', e);
     }
-    return INITIAL_CERTIFICATES;
+    return DEMO_MODE ? INITIAL_CERTIFICATES : [];
   });
 
   // Dynamic Registration Form Configuration configured by Head/Admin (Preserved across versions)
@@ -350,7 +364,7 @@ export default function App() {
       }
 
       if (path === '/session-room' || path === '/session-rooms' || path === '/rooms') {
-        setCurrentTab('session-room');
+        setCurrentTab('home');
         return;
       }
 
@@ -522,6 +536,8 @@ export default function App() {
 
   const handleLogout = () => {
     setStoredAuthToken(null);
+    eventService.saveEvents([]);
+    setEvents([]);
     setUser(null);
     setCurrentRole('guest');
     try {

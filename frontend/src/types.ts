@@ -37,6 +37,13 @@ export type SessionStatus = 'open' | 'closing_soon' | 'closed';
 
 export type SessionDeliveryStatus = 'UPCOMING' | 'LIVE' | 'COMPLETED';
 
+export interface MeetingLink {
+  platform: 'zoom' | 'meet' | 'youtube' | 'teams' | 'other';
+  label?: string | null;
+  url: string;
+  public: boolean;
+}
+
 export interface RoomPermissions {
   allowChat: boolean;
   allowShareScreen: boolean;
@@ -186,6 +193,7 @@ export interface SessionItem {
   location: string;
   meetingUrl?: string;
   meeting_link?: string | null;
+  meeting_links?: MeetingLink[];
   speaker?: string | null;
   registered_count?: number;
   isOnline?: boolean;

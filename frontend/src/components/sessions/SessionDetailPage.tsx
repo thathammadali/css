@@ -44,6 +44,7 @@ import { INITIAL_REGISTRANTS } from '../../data/mockRegistrations';
 import { INITIAL_ATTENDANCE_RECORDS } from '../../data/mockAttendance';
 import { eligibilityService } from '../../services/eligibilityService';
 import { getSessionCapacity } from '../../utils/capacityHelper';
+import MeetingLinks from '../MeetingLinks';
 
 interface SessionDetailPageProps {
   session: SessionItem;
@@ -465,17 +466,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                 {session.isOnline ? 'Online / Hybrid Meeting' : 'Physical Venue'}
               </span>
               <span className="text-sm font-medium text-white">{session.location}</span>
-              {session.meetingUrl && (
-                <a
-                  href={session.meetingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-[var(--primary-accent)] hover:underline inline-flex items-center gap-1 font-medium mt-0.5"
-                >
-                  <span>Join Meeting Link</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
+              <MeetingLinks session={session} className="mt-1" />
             </div>
           </div>
         </div>

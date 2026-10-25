@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { DEMO_MODE } from '../config';
 import {
   Calendar,
   Inbox,
@@ -227,7 +228,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     return () => clearTimeout(timer);
   }, [currentRole]);
 
-  const stats = ROLE_STATS[currentRole] || [];
+  const stats = DEMO_MODE ? (ROLE_STATS[currentRole] || []) : [];
   const greeting = ROLE_GREETINGS[currentRole];
 
   const filteredSessions = sessions.filter(
