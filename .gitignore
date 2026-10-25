@@ -29,3 +29,5 @@ Thumbs.db
 .venv/
 backend/openapi.json
 
+
+*.dump

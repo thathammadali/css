@@ -81,7 +81,16 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
     initialSession?.isOnline && !initialSession.location ? 'online' : initialSession?.isOnline ? 'hybrid' : 'in_person'
   );
   const [location, setLocation] = useState(initialSession?.location || 'Engineering Hall A-102');
-  const [meetingUrl, setMeetingUrl] = useState(initialSession?.meetingUrl || '');
+  type LinkRow = { url: string; label: string; isPublic: boolean };
+  const [linkRows, setLinkRows] = useState<LinkRow[]>(() => {
+    const existing: LinkRow[] = initialSession?.meeting_links?.length
+      ? initialSession.meeting_links.map((l) => ({ url: l.url, label: l.label || '', isPublic: l.public }))
+      : initialSession?.meetingUrl
+      ? [{ url: initialSession.meetingUrl, label: '', isPublic: false }]
+      : [];
+    return existing.length ? existing : [{ url: '', label: '', isPublic: false }];
+  });
+  const meetingUrl = linkRows[0]?.url || '';
   const [meetingDetails, setMeetingDetails] = useState(initialSession?.meetingDetails || '');
 
   // Category selection & Custom Category support
@@ -154,8 +163,13 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
     if (deliveryMode !== 'online' && !location.trim()) {
       newErrors.location = 'Physical venue / room location is required.';
     }
-    if (deliveryMode !== 'in_person' && !meetingUrl.trim()) {
-      newErrors.meetingUrl = 'Online meeting link (Zoom, Meet, Teams) is required.';
+    if (deliveryMode !== 'in_person') {
+      const filled = linkRows.filter((r) => r.url.trim());
+      if (filled.length === 0) {
+        newErrors.meetingUrl = 'At least one meeting link (Zoom, Meet, YouTube, Teams) is required.';
+      } else if (filled.some((r) => !/^https?:\/\//i.test(r.url.trim()))) {
+        newErrors.meetingUrl = 'Every link must start with http:// or https://';
+      }
     }
 
     if (isCustomCategory && !customCategoryInput.trim()) {
@@ -210,6 +224,16 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
       location: computedLocation,
       isOnline: isOnlineMode,
       meetingUrl: isOnlineMode ? meetingUrl.trim() : undefined,
+      meeting_links: isOnlineMode
+        ? linkRows
+            .filter((r) => r.url.trim())
+            .map((r) => ({
+              platform: 'other' as const,
+              label: r.label.trim() || null,
+              url: r.url.trim(),
+              public: r.isPublic,
+            }))
+        : [],
       meetingDetails: isOnlineMode ? meetingDetails.trim() : undefined,
       society: society.trim() || parentEvent?.organizer || 'University Society',
       status: initialSession?.status || 'open',
@@ -645,24 +669,66 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
             {/* Online Meeting Details */}
             {deliveryMode !== 'in_person' && (
               <div className="space-y-3 pt-1 border-t border-white/[0.06]">
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="session-meeting-url"
-                    className="block font-inter text-xs sm:text-[13px] font-medium text-white"
-                  >
-                    Online Meeting URL (Zoom / Google Meet / Teams) <span className="text-rose-400">*</span>
+                <div className="space-y-2">
+                  <label className="block font-inter text-xs sm:text-[13px] font-medium text-white">
+                    Online meeting links (Zoom / Google Meet / YouTube / Teams) <span className="text-rose-400">*</span>
                   </label>
-                  <div className="relative">
-                    <Video className="w-4 h-4 text-[var(--text-sec-70)] absolute left-3.5 top-3.5" />
-                    <input
-                      id="session-meeting-url"
-                      type="url"
-                      value={meetingUrl}
-                      onChange={(e) => setMeetingUrl(e.target.value)}
-                      placeholder="https://meet.google.com/xyz-abcd-efg"
-                      className="w-full h-11 pl-10 pr-3.5 rounded-xl bg-black/30 border border-white/[0.15] text-[14px] text-white focus:outline-none focus:border-[var(--primary-accent)] focus:ring-1 focus:ring-[var(--primary-accent)]"
-                    />
-                  </div>
+                  {linkRows.map((row, idx) => (
+                    <div key={idx} className="space-y-1.5 rounded-xl border border-white/[0.1] bg-black/20 p-2.5">
+                      <div className="relative">
+                        <Video className="w-4 h-4 text-[var(--text-sec-70)] absolute left-3.5 top-3.5" />
+                        <input
+                          type="url"
+                          value={row.url}
+                          onChange={(e) =>
+                            setLinkRows((rows) => rows.map((r, i) => (i === idx ? { ...r, url: e.target.value } : r)))
+                          }
+                          placeholder={idx === 0 ? 'https://meet.google.com/xyz-abcd-efg' : 'https://youtube.com/live/...'}
+                          className="w-full h-11 pl-10 pr-3.5 rounded-xl bg-black/30 border border-white/[0.15] text-[14px] text-white focus:outline-none focus:border-[var(--primary-accent)] focus:ring-1 focus:ring-[var(--primary-accent)]"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <input
+                          type="text"
+                          value={row.label}
+                          maxLength={60}
+                          onChange={(e) =>
+                            setLinkRows((rows) => rows.map((r, i) => (i === idx ? { ...r, label: e.target.value } : r)))
+                          }
+                          placeholder="Button label (optional), e.g. Live stream"
+                          className="flex-1 min-w-[160px] h-9 px-3 rounded-lg bg-black/30 border border-white/[0.15] text-[13px] text-white"
+                        />
+                        <label className="inline-flex items-center gap-1.5 text-xs text-white cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={row.isPublic}
+                            onChange={(e) =>
+                              setLinkRows((rows) => rows.map((r, i) => (i === idx ? { ...r, isPublic: e.target.checked } : r)))
+                            }
+                          />
+                          Visible to everyone
+                        </label>
+                        {linkRows.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setLinkRows((rows) => rows.filter((_, i) => i !== idx))}
+                            className="text-xs text-rose-300 hover:text-rose-200"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {linkRows.length < 5 && (
+                    <button
+                      type="button"
+                      onClick={() => setLinkRows((rows) => [...rows, { url: '', label: '', isPublic: false }])}
+                      className="text-xs font-medium text-[var(--primary-accent)] hover:underline"
+                    >
+                      + Add another link
+                    </button>
+                  )}
                   {errors.meetingUrl && (
                     <p className="text-xs text-rose-300 font-inter pt-0.5">{errors.meetingUrl}</p>
                   )}
