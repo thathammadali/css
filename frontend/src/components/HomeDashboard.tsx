@@ -18,9 +18,6 @@ import {
   Plus,
   FileCode2,
   Users,
-  Radio,
-  KeyRound,
-  Copy,
   GraduationCap,
   UserCheck,
   CheckCheck,
@@ -28,7 +25,6 @@ import {
   AlertCircle,
   Clock,
   FileCheck,
-  Unlock,
 } from 'lucide-react';
 import { DashboardRole, SessionItem, RegistrantItem, CertificateItem, EventItem } from '../types';
 import { ROLE_STATS, ROLE_GREETINGS } from '../data/mockSessions';
@@ -37,7 +33,6 @@ import { DashboardSkeleton } from './DashboardSkeleton';
 import { SessionDetailModal } from './SessionDetailModal';
 import { EmptyState } from './EmptyState';
 import { eligibilityService } from '../services/eligibilityService';
-import { roomAccessService } from '../services/roomAccessService';
 import { notificationService } from '../services/notificationService';
 import { storageService } from '../services/storageService';
 import { StudentActivityChart } from './dashboard/StudentActivityChart';
@@ -58,7 +53,6 @@ interface HomeDashboardProps {
   onNavigateToAuth: (mode?: 'login' | 'signup') => void;
   onNavigateToSession?: (sessionId: string) => void;
   onNavigateToSessionsList?: () => void;
-  onNavigateToSessionRooms?: () => void;
   onNavigateToEvents?: () => void;
   onNavigateToFormBuilder?: () => void;
   onNavigateToRegistrants?: () => void;
@@ -82,7 +76,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onNavigateToAuth,
   onNavigateToSession,
   onNavigateToSessionsList,
-  onNavigateToSessionRooms,
   onNavigateToEvents,
   onNavigateToFormBuilder,
   onNavigateToRegistrants,
@@ -104,7 +97,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   // Receipt modal for admin quick review
   const [inspectReceipt, setInspectReceipt] = useState<RegistrantItem | null>(null);
   const [isCodeCopied, setIsCodeCopied] = useState(false);
-  const [copiedDispatchId, setCopiedDispatchId] = useState<string | null>(null);
 
   // Student Re-upload Receipt State (Group 2 Workflow)
   const [resubmitTarget, setResubmitTarget] = useState<RegistrantItem | null>(null);
@@ -146,7 +138,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       participantEmail: reg.email || reg.primaryEmail,
       rollNumber: reg.rollNumber,
       durationMinutes: 180,
-      verifiedBy: 'Self Check-in (Session Room)',
+      verifiedBy: 'Self Check-in',
     });
     onNotify(`Attendance logged for "${reg.sessionTitle}"! Milestone 3 satisfied.`);
     setTimelineRefresh((v) => v + 1);
@@ -294,32 +286,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     }
     return false;
   });
-
-  // Check if student has allotted room codes
-  const effectiveEmail = currentUserEmail || (currentRole === 'student' ? 'student@university.edu.pk' : '');
-  const activeDispatches = useMemo(() => {
-    if (!effectiveEmail && currentRole !== 'student') return [];
-    const all = roomAccessService.getAllDispatches();
-    const norm = (effectiveEmail || 'student@university.edu.pk').toLowerCase().trim();
-    const studentAliases = ['student@university.edu.pk', 'sportszaab@gmail.com', 'jordan.lee@university.edu.pk'];
-    const isStudent = studentAliases.includes(norm) || currentRole === 'student';
-    return all.filter((d) => {
-      const dEmail = d.participantEmail.toLowerCase().trim();
-      return dEmail === norm || (isStudent && studentAliases.includes(dEmail));
-    });
-  }, [effectiveEmail, currentRole]);
-
-  // Admin: Calculate how many paid attendees need a room code
-  const paidPendingCodeCount = useMemo(() => {
-    return registrants.filter(
-      (r) =>
-        (r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0') &&
-        !roomAccessService.getDispatchForParticipant(
-          r.sessionId,
-          r.email || r.primaryEmail || ''
-        )
-    ).length;
-  }, [registrants]);
 
   const handleQuickStatusChange = (id: string, newStatus: 'approved' | 'rejected') => {
     if (!onUpdateRegistrants) return;
@@ -487,162 +453,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 />
               </div>
 
-              {/* Dedicated Session Codes Card (User Requested: Heading "Codes" with all allotted codes) */}
-              <div className="lg:col-span-4 p-5 sm:p-6 rounded-2xl glass-card flex flex-col justify-between space-y-4">
-                <div className="space-y-3">
-                  {/* Header: "Codes" */}
-                  <div className="flex items-center justify-between gap-2 border-b border-[var(--panel-border)] pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="p-1.5 rounded-lg bg-[var(--accent-15)] text-[var(--primary-accent)]">
-                        <KeyRound className="w-4 h-4" />
-                      </span>
-                      <div>
-                        <h4 className="font-poppins font-semibold text-base text-[var(--text-primary)] leading-tight">
-                          Codes
-                        </h4>
-                        <span className="text-[11px] text-[var(--text-secondary)]">
-                          Allotted Session Access Codes
-                        </span>
-                      </div>
-                    </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-mono font-medium bg-[var(--accent-15)] text-[var(--primary-accent)] border border-[var(--accent-30)]">
-                      {activeDispatches.length} {activeDispatches.length === 1 ? 'Code' : 'Codes'}
-                    </span>
-                  </div>
-
-                  {/* Sessions with Codes List */}
-                  {activeDispatches.length > 0 ? (
-                    <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-                      {activeDispatches.map((dispatch) => {
-                        const matchedSession = sessions.find((s) => s.id === dispatch.sessionId);
-                        const matchedRoom = roomAccessService.getAllRooms().find((r) => r.sessionId === dispatch.sessionId);
-                        const sessionTitle = matchedSession?.title || matchedRoom?.sessionTitle || 'Scheduled Session';
-                        const dateStr = matchedSession?.date ? `${matchedSession.date} · ${matchedSession.time}` : 'Oct 15 · 14:00 - 17:00';
-                        const locationStr = matchedSession?.location || matchedRoom?.roomName || 'Virtual Pod Alpha';
-                        const speakerStr = matchedRoom?.speakerName || matchedSession?.society || 'Dr. Aris Vance (Director)';
-                        const isCopied = copiedDispatchId === dispatch.id;
-
-                        return (
-                          <div
-                            key={dispatch.id}
-                            className="p-3.5 rounded-xl bg-[var(--panel-bg)] border border-[var(--panel-border)] space-y-2.5 transition-all hover:border-[var(--primary-accent)]/40 shadow-xs"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <h5 className="font-poppins font-semibold text-xs sm:text-sm text-[var(--text-primary)] leading-snug line-clamp-1">
-                                  {sessionTitle}
-                                </h5>
-                                <p className="text-[11px] text-[var(--text-secondary)] truncate mt-0.5">
-                                  {speakerStr} · {locationStr}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="text-[var(--text-secondary)]">Schedule:</span>
-                              <span className="text-emerald-400 font-mono font-medium">{dateStr}</span>
-                            </div>
-
-                            {/* Allotted Code Box */}
-                            <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--accent-15)] border border-[var(--accent-30)]">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <KeyRound className="w-3.5 h-3.5 text-[var(--primary-accent)] shrink-0" />
-                                <span className="font-mono font-bold text-xs sm:text-sm text-[var(--text-primary)] tracking-wider truncate select-all">
-                                  {dispatch.accessCodeSent}
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard?.writeText(dispatch.accessCodeSent);
-                                  setCopiedDispatchId(dispatch.id);
-                                  setTimeout(() => setCopiedDispatchId(null), 2000);
-                                  onNotify(`Copied code: ${dispatch.accessCodeSent}`);
-                                }}
-                                className="px-2 py-1 rounded bg-[var(--panel-bg)] hover:bg-[var(--panel-border)] border border-[var(--panel-border)] text-[10px] font-medium text-[var(--text-primary)] flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                                title="Copy Room Access Code"
-                              >
-                                {isCopied ? (
-                                  <>
-                                    <Check className="w-3 h-3 text-emerald-400" />
-                                    <span className="text-emerald-400">Copied</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy className="w-3 h-3" />
-                                    <span>Copy</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-
-                            {/* Enter / Unlock Button for this session */}
-                            <button
-                              type="button"
-                              onClick={onNavigateToSessionRooms}
-                              className="w-full py-2 rounded-lg bg-[var(--primary-accent)] hover:brightness-105 active:scale-[0.98] text-white font-medium text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
-                            >
-                              <Unlock className="w-3.5 h-3.5" />
-                              <span>Enter Virtual Room</span>
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="p-6 text-center rounded-xl bg-[var(--panel-bg)] border border-[var(--panel-border)] space-y-2">
-                      <KeyRound className="w-8 h-8 text-[var(--text-secondary)]/50 mx-auto" />
-                      <p className="text-xs font-medium text-[var(--text-primary)]">No Session Codes Allotted Yet</p>
-                      <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed max-w-xs mx-auto">
-                        Once your session registration and fee verification are approved, the Super Admin will allocate your access code here.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {activeDispatches.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={onNavigateToSessionRooms}
-                    className="w-full py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] border border-white/[0.12] text-white font-medium text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                  >
-                    <Radio className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>View All Live Session Rooms</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================
-              LIVE SESSION ROOMS BANNER (VIRTUAL PODS - ADMIN / GUEST)
-             ======================================================== */}
-          {currentRole !== 'student' && (
-            <div className="glass-card p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-l-4 border-l-[var(--primary-accent)]">
-              <div className="flex items-center gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-[var(--accent-15)] border border-[var(--accent-30)] flex items-center justify-center text-[var(--primary-accent)] shrink-0">
-                  <Radio className="w-5 h-5 text-[var(--primary-accent)]" />
-                </div>
-                <div>
-                  <h4 className="font-poppins font-semibold text-[var(--text-primary)] text-sm sm:text-base flex items-center gap-2">
-                    <span>Session Rooms (Live Virtual Pods)</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30">
-                      LIVE HUB
-                    </span>
-                  </h4>
-                  <p className="text-xs text-[var(--text-secondary)]">
-                    Unlock and enter virtual meeting rooms using room access codes allotted by system administrators.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={onNavigateToSessionRooms}
-                className="px-4 py-2 rounded-xl bg-[var(--primary-accent)] hover:brightness-105 active:scale-[0.98] text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm shrink-0"
-              >
-                <span>Open Session Rooms</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
             </div>
           )}
 
@@ -719,34 +529,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 )}
               </div>
 
-              {/* Code Allotment Quick Action Banner for Admin */}
-              <div className="p-4 rounded-xl bg-[var(--panel-bg)] border border-[var(--panel-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[var(--accent-15)] border border-[var(--accent-30)] flex items-center justify-center text-[var(--primary-accent)] shrink-0">
-                    <KeyRound className="w-5 h-5 text-[var(--primary-accent)]" />
-                  </div>
-                  <div>
-                    <h4 className="font-poppins font-semibold text-[var(--text-primary)] text-xs sm:text-sm flex items-center gap-2">
-                      <span>Room Code Allotment & Review</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--accent-20)] text-[var(--primary-accent)] border border-[var(--accent-30)]">
-                        {paidPendingCodeCount > 0 ? `${paidPendingCodeCount} Paid Need Codes` : 'All Paid Dispatched'}
-                      </span>
-                    </h4>
-                    <p className="text-[11px] text-[var(--text-secondary)]">
-                      Admin/Super Admin filtered view se paid students ko filter karke room code alot karein taake notifications foran send hon.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={onNavigateToRegistrants}
-                  className="px-3.5 py-2 rounded-xl bg-[var(--primary-accent)] hover:brightness-105 active:scale-[0.98] text-white font-medium text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs shrink-0"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <span>Allocate Codes (Filtered)</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
 
               {/* Events Awaiting Super Admin Publication Approval */}
               {currentRole === 'super_admin' && events.some((e) => e.status === 'PENDING_APPROVAL') && (
@@ -1041,7 +823,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                             {reg.status === 'rejected'
                               ? '⚠️ Slip was rejected by Admin. Click "Re-upload Receipt" to upload a corrected screenshot or slip.'
                               : reg.status === 'approved'
-                              ? '✓ Verified by Admin. Your seat and room access are officially confirmed.'
+                              ? '✓ Verified by Admin. Your seat is officially confirmed.'
                               : 'Admin verifies bank receipts manually before confirming seat.'}
                           </p>
                         </div>

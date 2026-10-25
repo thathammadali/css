@@ -46,8 +46,6 @@ export function parseHash(hashString?: string): ParsedRoute {
     params.eventId = decodeURIComponent(segments[1]);
   } else if (segments[0] === 'sessions' && segments[1]) {
     params.sessionId = decodeURIComponent(segments[1]);
-  } else if (segments[0] === 'session-room' && segments[1]) {
-    params.sessionId = decodeURIComponent(segments[1]);
   } else if (segments[0] === 'verify' && segments[1]) {
     params.certificateId = decodeURIComponent(segments[1]);
   } else if (segments[0] === 'certificates' && segments[1]) {

@@ -458,7 +458,7 @@ export const eventService = {
           recipientEmail: 'all',
           type: 'announcement',
           title: `🎙️ Session LIVE: ${updatedSession.title}`,
-          message: `The virtual meeting room for "${updatedSession.title}" is now broadcasting LIVE! Join now with your room access credentials.`,
+          message: `The virtual meeting for "${updatedSession.title}" is now broadcasting LIVE! Open the session to join.`,
           linkTab: 'sessions',
           entityId: `delivery-live-${updatedSession.id}`,
         });

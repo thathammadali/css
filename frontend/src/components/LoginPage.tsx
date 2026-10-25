@@ -538,7 +538,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               </p>
 
               <p className="font-inter text-xs text-white/60 leading-relaxed max-w-xs">
-                Log in to discover sessions, enter live virtual rooms, submit vouchers, and claim verified credentials.
+                Log in to discover sessions, join live meetings, submit vouchers, and claim verified credentials.
               </p>
             </div>
           </div>

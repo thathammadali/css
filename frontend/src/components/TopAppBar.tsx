@@ -128,8 +128,6 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         return 'Dashboard Overview';
       case 'sessions':
         return 'Events & Sessions';
-      case 'session-room':
-        return 'Session Rooms (Virtual Meeting Hub)';
       case 'form-builder':
         return 'Dynamic Form Builder';
       case 'registrants':

@@ -680,7 +680,7 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
                     type="text"
                     value={meetingDetails}
                     onChange={(e) => setMeetingDetails(e.target.value)}
-                    placeholder="Passcode: SEMS2026, waiting room enabled"
+                    placeholder="Passcode or access instructions"
                     className="w-full h-11 px-3.5 rounded-xl bg-black/30 border border-white/[0.15] text-[14px] text-white focus:outline-none focus:border-[var(--primary-accent)] focus:ring-1 focus:ring-[var(--primary-accent)]"
                   />
                 </div>

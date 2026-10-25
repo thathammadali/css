@@ -7,7 +7,6 @@ import {
   ClipboardList,
   ShieldCheck,
   Edit3,
-  Lock,
   DollarSign,
   CheckCircle2,
   AlertCircle,
@@ -18,8 +17,6 @@ import {
   Video,
   Tag,
   ExternalLink,
-  KeyRound,
-  Radio,
   Download,
 } from 'lucide-react';
 import {
@@ -30,15 +27,10 @@ import {
   SessionComment,
   SessionTask,
   RegistrantItem,
-  RoomAccessValidationResponse,
 } from '../../types';
 import { SessionResourcesSection } from './SessionResourcesSection';
 import { SessionCommentsSection } from './SessionCommentsSection';
 import { SessionTasksSection } from './SessionTasksSection';
-import { RoomCodeInputDialog } from './RoomCodeInputDialog';
-import { SessionRoomView } from './SessionRoomView';
-import { SessionRoomAdminPanel } from './SessionRoomAdminPanel';
-import { roomAccessService } from '../../services/roomAccessService';
 import { eventService } from '../../services/eventService';
 import { INITIAL_REGISTRANTS } from '../../data/mockRegistrations';
 import { INITIAL_ATTENDANCE_RECORDS } from '../../data/mockAttendance';
@@ -89,15 +81,8 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   }, [isRegistered, session.id]);
 
   const [activeTab, setActiveTab] = useState<
-    'details' | 'resources' | 'tasks' | 'discussion' | 'attendance' | 'room-governance'
+    'details' | 'resources' | 'tasks' | 'discussion' | 'attendance'
   >('details');
-
-  // Room access states (authoritative in-memory, never LocalStorage)
-  const [isRoomCodeModalOpen, setIsRoomCodeModalOpen] = useState(false);
-  const [activeRoomData, setActiveRoomData] = useState<{
-    sessionToken: string;
-    room: NonNullable<RoomAccessValidationResponse['room']>;
-  } | null>(null);
 
   // Derive registrant if not passed explicitly
   const effectiveRegistrant =
@@ -110,7 +95,6 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
           (currentUserEmail?.includes('jordan') && r.name.toLowerCase().includes('jordan')))
     );
 
-  const room = roomAccessService.getOrCreateRoomForSession(session);
   const capacityInfo = getSessionCapacity(session);
   const isSessionClosed = session.status === 'closed';
   const isPaidSession = !!session.isPaid;
@@ -124,8 +108,6 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
     registered &&
     (effectiveRegistrant?.lifecycleStatus === 'FORM_IN_PROGRESS' ||
       effectiveRegistrant?.lifecycleStatus === 'SUBMITTED');
-  const isRoomLocked = room.status === 'revoked' || room.status === 'locked';
-
   const sessionRegistrants = INITIAL_REGISTRANTS.filter(
     (r) => r.sessionId === session.id
   );
@@ -133,7 +115,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   const getBadgeStyle = (status: SessionStatus) => {
     if (session.deliveryStatus === 'LIVE') {
       return {
-        label: 'LIVE NOW in Virtual Room',
+        label: 'LIVE NOW in Virtual Meeting',
         classes: 'bg-rose-500/25 text-rose-300 border border-rose-500/40 shadow-lg shadow-rose-950/40',
         dot: 'bg-rose-500 animate-ping',
       };
@@ -256,69 +238,6 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
       });
     }
   };
-
-  const handleEnterAsHost = async () => {
-    try {
-      const res = await roomAccessService.requestHostAccess(
-        session,
-        currentRole,
-        currentUserEmail || (currentRole === 'super_admin' ? 'dean.taylor@university.edu.pk' : 'admin@university.edu.pk'),
-        currentUserName || (currentRole === 'super_admin' ? 'Prof. Dean Taylor' : 'Alex Morgan')
-      );
-      if (res.success && res.sessionToken && res.room) {
-        setActiveRoomData({
-          sessionToken: res.sessionToken,
-          room: res.room,
-        });
-        onNotify(`Joined "${res.room.roomName}" with Host Privileges!`);
-      } else {
-        onNotify(res.error || 'Failed to initialize host access.');
-      }
-    } catch {
-      onNotify('Could not connect to host session.');
-    }
-  };
-
-  if (activeRoomData) {
-    return (
-      <SessionRoomView
-        session={session}
-        room={activeRoomData.room}
-        sessionToken={activeRoomData.sessionToken}
-        currentRole={currentRole}
-        userName={
-          currentUserName ||
-          (currentRole === 'super_admin'
-            ? 'Prof. Dean Taylor'
-            : currentRole === 'admin'
-            ? 'Alex Morgan'
-            : 'Jordan Lee')
-        }
-        userEmail={currentUserEmail || 'participant@university.edu.pk'}
-        registrant={effectiveRegistrant}
-        onLeaveRoom={() => {
-          roomAccessService.leaveRoom(activeRoomData.sessionToken);
-          setActiveRoomData(null);
-          // Refresh session to reflect any delivery status updates from the meeting
-          const updated = eventService.getSessionById(session.id);
-          if (updated && onUpdateSession) {
-            onUpdateSession(updated.session);
-          }
-          onNotify(`Left room "${activeRoomData.room.roomName}".`);
-        }}
-        onAttendanceChecked={(sessId) => {
-          if (effectiveRegistrant) {
-            effectiveRegistrant.attendanceCompleted = true;
-          }
-          const updated = eventService.getSessionById(sessId);
-          if (updated && onUpdateSession) {
-            onUpdateSession(updated.session);
-          }
-        }}
-        onNotify={onNotify}
-      />
-    );
-  }
 
   return (
     <div id="session-detail-page" className="w-full space-y-6 animate-fadeIn pb-16">
@@ -484,13 +403,13 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
         <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-[var(--accent-10)] border border-[var(--accent-25)]">
           <div className="space-y-0.5 text-center sm:text-left">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--primary-accent)] block">
-              {isSuperAdminOrAdmin ? 'Host / Session Management' : 'Registration Status'}
+              {isSuperAdminOrAdmin ? 'Session Management' : 'Registration Status'}
             </span>
             <p className="text-sm text-white font-medium">
               {isSuperAdminOrAdmin
                 ? session.deliveryStatus === 'LIVE'
-                  ? '🎙️ Meeting is currently LIVE! Host broadcasting active.'
-                  : 'Authorized Session Host privileges granted for this room.'
+                  ? '🎙️ Meeting is currently LIVE!'
+                  : 'Authorized session management access granted.'
                 : isWaitlisted
                 ? `⏳ You are on the Waitlist (Queue #${effectiveRegistrant?.waitlistPosition || 1})`
                 : registered
@@ -504,30 +423,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
-            {isSuperAdminOrAdmin ? (
-              /* Authorized Host Direct Access */
-              <div className="flex flex-col sm:flex-row items-center gap-2.5">
-                <span className="px-3 py-1.5 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-semibold flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-purple-300" />
-                  <span>Authorized Session Host</span>
-                </span>
-
-                <button
-                  id="btn-host-enter-room"
-                  type="button"
-                  onClick={handleEnterAsHost}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white font-inter font-semibold text-xs sm:text-sm transition-all cursor-pointer shadow-lg shadow-purple-900/40 flex items-center justify-center gap-2"
-                  title="Enter virtual meeting room with full Host / Admin privileges"
-                >
-                  <Radio className="w-4 h-4 text-purple-200 animate-pulse" />
-                  <span>
-                    {session.deliveryStatus === 'LIVE'
-                      ? 'Join Live Room as Host'
-                      : 'Launch Virtual Meeting Room'}
-                  </span>
-                </button>
-              </div>
-            ) : !registered ? (
+            {!registered ? (
               <button
                 type="button"
                 onClick={handleRegisterClick}
@@ -579,7 +475,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                   <span>Payment Pending Verification</span>
                 </span>
                 <span className="text-[11px] font-mono text-amber-200/80">
-                  Room access locked until payment is approved
+                  Meeting access becomes available after payment approval
                 </span>
               </div>
             ) : isPaymentRejected ? (
@@ -592,41 +488,19 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                   Please resubmit your receipt in My Registrations
                 </span>
               </div>
-            ) : isRoomLocked ? (
-              <div className="flex flex-col sm:items-end gap-1">
-                <span className="px-3.5 py-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center justify-center gap-1.5">
-                  <Lock className="w-4 h-4 text-rose-400" />
-                  <span>Room Access Not Available</span>
-                </span>
-                <span className="text-[11px] text-rose-200/80">
-                  Access code currently locked or revoked by host
-                </span>
-              </div>
             ) : (
-              /* Participant is eligible! Payment approved (or free) and room active */
               <div className="flex flex-col sm:flex-row items-center gap-2.5">
                 <span className="px-3.5 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center justify-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Enrolled & Confirmed</span>
                 </span>
-
-                <button
-                  id="btn-enter-session-room"
-                  type="button"
-                  onClick={() => setIsRoomCodeModalOpen(true)}
-                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-inter font-medium text-xs sm:text-sm transition-all cursor-pointer shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2"
-                  title="Enter the live session room using unique access code"
-                >
-                  <KeyRound className="w-4 h-4 text-purple-200" />
-                  <span>Enter Session Room</span>
-                </button>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Tabs for Resources, Tasks, Discussion, Attendance, and Room Governance */}
+      {/* Tabs for Resources, Tasks, Discussion, and Attendance */}
       <div className="space-y-4">
         <div className="flex items-center gap-2 border-b border-white/[0.10] pb-2 overflow-x-auto">
           {[
@@ -637,7 +511,6 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
             ...(isSuperAdminOrAdmin
               ? [
                   { id: 'attendance' as const, label: `Attendance & Eligibility (${sessionRegistrants.length})` },
-                  { id: 'room-governance' as const, label: 'Room Access & Codes' },
                 ]
               : []),
           ].map((tab) => (
@@ -776,7 +649,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 animate-spin">
-                          <Radio className="w-5 h-5" />
+                          <Video className="w-5 h-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
@@ -966,7 +839,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                               </span>
                             ) : att.verificationStatus === 'in_session' ? (
                               <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-medium">
-                                <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
+                                <Video className="w-3 h-3 text-cyan-400 animate-pulse" />
                                 <span>In Session ({att.durationMinutes}m live)</span>
                               </span>
                             ) : (
@@ -1079,7 +952,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                               ) : att.verificationStatus === 'in_session' ? (
                                 <div className="space-y-0.5">
                                   <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-medium">
-                                    <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
+                                    <Video className="w-3 h-3 text-cyan-400 animate-pulse" />
                                     <span>In Session</span>
                                   </span>
                                   <div className="text-[10px] font-mono text-cyan-300/80">
@@ -1133,39 +1006,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
           </div>
         )}
 
-        {/* Tab: Room Access & Governance (Admin / Super Admin) */}
-        {activeTab === 'room-governance' && isSuperAdminOrAdmin && (
-          <SessionRoomAdminPanel
-            session={session}
-            currentRole={currentRole}
-            actorName={
-              currentUserName ||
-              (currentRole === 'super_admin' ? 'Prof. Dean Taylor' : 'Alex Morgan')
-            }
-            onNotify={onNotify}
-          />
-        )}
       </div>
-
-      {/* Room Access Code Input Dialog */}
-      <RoomCodeInputDialog
-        session={session}
-        currentUserEmail={
-          currentUserEmail ||
-          (currentRole === 'guest'
-            ? 'sarah.connor@industrytech.io'
-            : currentRole === 'student'
-            ? 'student@university.edu.pk'
-            : 'admin@university.edu.pk')
-        }
-        registrant={effectiveRegistrant}
-        isOpen={isRoomCodeModalOpen}
-        onClose={() => setIsRoomCodeModalOpen(false)}
-        onAuthorized={(authData) => {
-          setActiveRoomData(authData);
-        }}
-        onNotify={onNotify}
-      />
     </div>
   );
 };

@@ -19,7 +19,6 @@ import { PaymentReviewPage } from './components/reviews/PaymentReviewPage';
 import { CertificatesPage } from './components/certificates/CertificatesPage';
 import { UsersPage } from './components/users/UsersPage';
 import { ProfilePage } from './components/profile/ProfilePage';
-import { SessionRoomsHubPage } from './components/sessions/SessionRoomsHubPage';
 import { AccessDeniedPage } from './components/AccessDeniedPage';
 import { parseHash, isRouteProtected, getRequiredRoleForRoute } from './utils/router';
 import { useTheme } from './context/ThemeContext';
@@ -196,8 +195,6 @@ export default function App() {
         return '#/home';
       case 'sessions':
         return '#/sessions';
-      case 'session-room':
-        return '#/session-room';
       case 'registrants':
       case 'reviews':
         return '#/registrants';
@@ -359,11 +356,6 @@ export default function App() {
       }
 
       if (path === '/home' || path === '/dashboard') {
-        setCurrentTab('home');
-        return;
-      }
-
-      if (path === '/session-room' || path === '/session-rooms' || path === '/rooms') {
         setCurrentTab('home');
         return;
       }
@@ -848,7 +840,6 @@ export default function App() {
                 onNavigateToAuth={handleOpenAuth}
                 onNavigateToSession={handleNavigateToSession}
                 onNavigateToSessionsList={() => navigate('#/sessions')}
-                onNavigateToSessionRooms={() => navigate('#/session-room')}
                 onNavigateToEvents={() => navigate('#/sessions')}
                 onNavigateToFormBuilder={() => navigate('#/form-builder')}
                 onNavigateToRegistrants={() => navigate('#/registrants')}
@@ -908,44 +899,6 @@ export default function App() {
                 initialSelectedSessionId={targetSessionId}
                 initialSelectedEventId={targetEventId}
                 initialSubScreen={targetEventId ? 'event-detail' : undefined}
-              />
-            </motion.div>
-          )}
-
-          {/* TAB: SESSION ROOMS (VIRTUAL MEETING HUB - ALL 4 ROLES) */}
-          {currentTab === 'session-room' && (
-            <motion.div
-              key="tab-session-room"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.15 }}
-            >
-              <SessionRoomsHubPage
-                currentRole={currentRole}
-                userName={
-                  user?.name ||
-                  (currentRole === 'guest'
-                    ? 'Guest User'
-                    : currentRole === 'student'
-                    ? 'Jordan Lee'
-                    : currentRole === 'super_admin'
-                    ? 'Prof. Dean Taylor'
-                    : 'Alex Morgan')
-                }
-                userEmail={
-                  user?.primaryEmail ||
-                  user?.email ||
-                  (currentRole === 'student'
-                    ? 'student@university.edu.pk'
-                    : currentRole === 'super_admin'
-                    ? 'dean.taylor@university.edu.pk'
-                    : 'admin@university.edu.pk')
-                }
-                sessions={sessions}
-                registrants={registrants}
-                onNotify={showNotification}
-                onNavigateToSessionDetail={handleNavigateToSession}
               />
             </motion.div>
           )}

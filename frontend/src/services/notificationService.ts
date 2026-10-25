@@ -9,28 +9,6 @@ const NOTIFICATIONS_STORAGE_KEY = 'sems_notifications_log';
 
 export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
   {
-    id: 'notif-room-code-student',
-    type: 'room_code_sent',
-    title: '🔑 Room Access Code Allotted: Annual Robotics & AI Symposium',
-    message: 'Your Room Access Code for "Annual Robotics & AI Symposium 2026" is [ SEMS-ROBOT-8492 ]. Go to Session Rooms and click Unlock Now to enter!',
-    timestamp: 'Just now',
-    read: false,
-    linkTab: 'sessions',
-    recipientEmail: 'student@university.edu.pk',
-    entityId: 'room-dispatch-sess-1',
-  },
-  {
-    id: 'notif-room-code-sportszaab',
-    type: 'room_code_sent',
-    title: '🔑 Room Access Code Allotted: Annual Robotics & AI Symposium',
-    message: 'Your Room Access Code for "Annual Robotics & AI Symposium 2026" is [ SEMS-ROBOT-8492 ]. Go to Session Rooms and click Unlock Now to enter!',
-    timestamp: 'Just now',
-    read: false,
-    linkTab: 'sessions',
-    recipientEmail: 'sportszaab@gmail.com',
-    entityId: 'room-dispatch-sess-1-sz',
-  },
-  {
     id: 'notif-1',
     type: 'event_published',
     title: 'New Campus Event Published',
@@ -75,12 +53,6 @@ export const notificationService = {
       const stored = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
       if (stored) {
         allNotifications = JSON.parse(stored);
-        // Ensure our allotted code notification is present if older storage didn't have it
-        const hasAllottedNotif = allNotifications.some((n) => n.id === 'notif-room-code-student');
-        if (!hasAllottedNotif) {
-          allNotifications = [...INITIAL_NOTIFICATIONS, ...allNotifications.filter(n => !n.id.startsWith('notif-room-code'))];
-          this.saveNotifications(allNotifications);
-        }
       } else {
         allNotifications = INITIAL_NOTIFICATIONS;
         this.saveNotifications(allNotifications);

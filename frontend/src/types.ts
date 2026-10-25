@@ -12,7 +12,6 @@ export type DashboardRole = 'super_admin' | 'admin' | 'student' | 'guest';
 export type NavTab =
   | 'home'
   | 'sessions'
-  | 'session-room'
   | 'form-builder'
   | 'registrants'
   | 'certificates'
@@ -42,14 +41,6 @@ export interface MeetingLink {
   label?: string | null;
   url: string;
   public: boolean;
-}
-
-export interface RoomPermissions {
-  allowChat: boolean;
-  allowShareScreen: boolean;
-  allowUnmute: boolean;
-  allowRaiseHand: boolean;
-  allowCamera: boolean;
 }
 
 export type RegistrationLifecycleStatus =
@@ -290,81 +281,6 @@ export interface GuestRegistrationPayload {
   customResponses?: Record<string, string>;
 }
 
-// ==========================================
-// SESSION ROOM & ACCESS MANAGEMENT MODELS
-// ==========================================
-export type RoomStatus = 'active' | 'revoked' | 'locked';
-
-export interface SessionRoom {
-  id: string; // Unique Room ID (e.g., "room-sess-1" or "SEMS-RM-101")
-  sessionId: string; // References Session
-  sessionTitle: string;
-  roomName: string; // e.g. "Main Engineering Hall A-102 (Live Virtual Pod)"
-  roomAccessCode: string; // Server-authoritative Unique Access Code (e.g. "SEMS-AI-9482")
-  status: RoomStatus;
-  capacity?: number;
-  activeParticipantsCount?: number;
-  meetingUrl?: string;
-  presentationTopic?: string;
-  speakerName?: string;
-  createdAt: string;
-  updatedAt: string;
-  deliveryStatus?: SessionDeliveryStatus;
-  isLive?: boolean;
-  isLocked?: boolean;
-  isRecording?: boolean;
-  recordingUrl?: string;
-  recordingDuration?: string;
-  meetingSummary?: string;
-  permissions?: RoomPermissions;
-}
-
-export interface RoomAccessDispatch {
-  id: string;
-  roomId: string;
-  sessionId: string;
-  participantEmail: string;
-  participantName: string;
-  accessCodeSent: string;
-  sentAt: string;
-  sentBy: string;
-  status: 'delivered' | 'revoked';
-}
-
-export interface RoomAccessValidationPayload {
-  sessionId: string;
-  participantEmail: string;
-  accessCode: string;
-}
-
-export interface RoomAccessValidationResponse {
-  success: boolean;
-  sessionToken?: string;
-  room?: {
-    id: string;
-    sessionId: string;
-    sessionTitle: string;
-    roomName: string;
-    status: RoomStatus;
-    meetingUrl?: string;
-    speakerName?: string;
-    presentationTopic?: string;
-    deliveryStatus?: SessionDeliveryStatus;
-    isLive?: boolean;
-    isLocked?: boolean;
-    isRecording?: boolean;
-  };
-  error?: string;
-  errorCode?:
-    | 'NOT_REGISTERED'
-    | 'PAYMENT_PENDING'
-    | 'PAYMENT_REQUIRED'
-    | 'INVALID_CODE'
-    | 'CODE_REVOKED'
-    | 'ROOM_LOCKED'
-    | 'UNAUTHORIZED';
-}
-
 export interface EligibilityCheckDetail {
   passed: boolean;
   message: string;
@@ -395,8 +311,6 @@ export interface NotificationItem {
     | 'payment_pending'
     | 'payment_approved'
     | 'payment_rejected'
-    | 'room_code_sent'
-    | 'room_code_revoked'
     | 'certificate_issued'
     | 'certificate_revoked'
     | 'event_submitted'

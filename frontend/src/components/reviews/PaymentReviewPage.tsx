@@ -19,10 +19,7 @@ import {
   CheckCircle2,
   XCircle,
   Info,
-  KeyRound,
   Clock,
-  Lock,
-  Send,
   CheckSquare,
   Square,
   RotateCcw,
@@ -32,16 +29,12 @@ import {
   DashboardRole,
   PaymentStatus,
   SessionItem,
-  RoomAccessValidationResponse,
 } from '../../types';
 import { auditService } from '../../services/userService';
 import { eligibilityService } from '../../services/eligibilityService';
 import { notificationService } from '../../services/notificationService';
-import { roomAccessService } from '../../services/roomAccessService';
 import { eventService } from '../../services/eventService';
 import { storageService } from '../../services/storageService';
-import { RoomCodeInputDialog } from '../sessions/RoomCodeInputDialog';
-import { SessionRoomView } from '../sessions/SessionRoomView';
 
 interface PaymentReviewPageProps {
   currentRole: DashboardRole;
@@ -71,7 +64,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
   isLoading = false,
 }) => {
   const [filterStatus, setFilterStatus] = useState<
-    'all' | 'paid_approved' | 'pending' | 'code_needed' | 'code_allocated' | 'rejected'
+    'all' | 'paid_approved' | 'pending' | 'rejected'
   >('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState<RegistrantItem | null>(null);
@@ -94,17 +87,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
   } | null>(null);
 
   const canReview = currentRole === 'super_admin' || currentRole === 'admin';
-  const [, setDispatchTick] = useState(0);
-
-  // Room access dialog & live stage states for My Registrations
-  const [activeDialogSession, setActiveDialogSession] = useState<SessionItem | null>(null);
-  const [activeDialogRegistrant, setActiveDialogRegistrant] = useState<RegistrantItem | null>(null);
-  const [isRoomCodeModalOpen, setIsRoomCodeModalOpen] = useState(false);
-  const [activeRoomData, setActiveRoomData] = useState<{
-    sessionToken: string;
-    room: NonNullable<RoomAccessValidationResponse['room']>;
-  } | null>(null);
-
   // Escape key handler for all PaymentReviewPage modals
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -113,95 +95,11 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
         else if (rejectingItem) setRejectingItem(null);
         else if (resubmittingItem) setResubmittingItem(null);
         else if (inspectingEligibility) setInspectingEligibility(null);
-        else if (isRoomCodeModalOpen) setIsRoomCodeModalOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedReceipt, rejectingItem, resubmittingItem, inspectingEligibility, isRoomCodeModalOpen]);
-
-  const handleOpenRoomCodeDialog = (session: SessionItem, reg: RegistrantItem) => {
-    setActiveDialogSession(session);
-    setActiveDialogRegistrant(reg);
-    setIsRoomCodeModalOpen(true);
-  };
-
-  const handleSendRoomCode = (reg: RegistrantItem) => {
-    if (!canReview) return;
-    const allSessions = eventService.getAllSessions();
-    const session = allSessions.find((s) => s.id === reg.sessionId) || ({
-      id: reg.sessionId,
-      title: reg.sessionTitle,
-      eventId: reg.eventId || 'evt-1',
-      society: 'University Society',
-      date: '2026-10-15',
-      time: '14:00 - 17:00',
-      location: 'Live Virtual Pod',
-      status: 'open',
-      isPaid: reg.amount && !reg.amount.includes('0') && !reg.amount.toLowerCase().includes('free'),
-    } as any);
-
-    const actorName = currentRole === 'super_admin' ? 'Super Admin' : 'Admin';
-    const result = roomAccessService.sendRoomCodeToParticipant(
-      session,
-      reg,
-      currentRole,
-      actorName
-    );
-
-    if (result.success) {
-      onNotify(result.message);
-      setDispatchTick((v) => v + 1);
-    } else {
-      onNotify(result.message);
-    }
-  };
-
-  const handleBulkAllocateCodes = (targetRegistrants: RegistrantItem[]) => {
-    if (!canReview) return;
-    const allSessions = eventService.getAllSessions();
-    const actorName = currentRole === 'super_admin' ? 'Super Admin' : 'Admin';
-    let successCount = 0;
-
-    const eligible = targetRegistrants.filter(
-      (r) => r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0'
-    );
-
-    if (eligible.length === 0) {
-      onNotify('No approved attendees found in current selection. Please approve payments first.');
-      return;
-    }
-
-    eligible.forEach((reg) => {
-      const session = allSessions.find((s) => s.id === reg.sessionId) || ({
-        id: reg.sessionId,
-        title: reg.sessionTitle,
-        eventId: reg.eventId || 'evt-1',
-        society: 'University Society',
-        date: '2026-10-15',
-        time: '14:00 - 17:00',
-        location: 'Live Virtual Pod',
-        status: 'open',
-        isPaid: reg.amount && !reg.amount.includes('0') && !reg.amount.toLowerCase().includes('free'),
-      } as any);
-
-      const res = roomAccessService.sendRoomCodeToParticipant(
-        session,
-        reg,
-        currentRole,
-        actorName
-      );
-      if (res.success) {
-        successCount++;
-      }
-    });
-
-    setDispatchTick((v) => v + 1);
-    setSelectedRegistrantIds([]);
-    onNotify(
-      `Dispatched session room access codes to ${successCount} student(s)! In-app notifications sent.`
-    );
-  };
+  }, [selectedReceipt, rejectingItem, resubmittingItem, inspectingEligibility]);
 
   const toggleSelectAll = (list: RegistrantItem[]) => {
     if (selectedRegistrantIds.length === list.length && list.length > 0) {
@@ -464,23 +362,12 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
     return accessibleRegistrants.filter((r: RegistrantItem) => {
       let matchesFilter = true;
       const isPaidOrFree = r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0';
-      const hasCode = !!roomAccessService.getDispatchForParticipant(
-        r.sessionId,
-        r.email || r.primaryEmail || ''
-      );
-
       switch (filterStatus) {
         case 'paid_approved':
           matchesFilter = isPaidOrFree;
           break;
         case 'pending':
           matchesFilter = r.status === 'pending';
-          break;
-        case 'code_needed':
-          matchesFilter = isPaidOrFree && !hasCode;
-          break;
-        case 'code_allocated':
-          matchesFilter = hasCode;
           break;
         case 'rejected':
           matchesFilter = r.status === 'rejected';
@@ -500,38 +387,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
     });
   }, [accessibleRegistrants, filterStatus, searchQuery]);
 
-  if (activeRoomData && activeDialogSession) {
-    return (
-      <SessionRoomView
-        session={activeDialogSession}
-        room={activeRoomData.room}
-        sessionToken={activeRoomData.sessionToken}
-        currentRole={currentRole}
-        userName={
-          currentUserName ||
-          (currentRole === 'guest'
-            ? 'Guest Member'
-            : currentRole === 'student'
-            ? 'Jordan Lee'
-            : 'Participant')
-        }
-        userEmail={
-          currentUserEmail ||
-          (currentRole === 'guest'
-            ? 'sarah.connor@industrytech.io'
-            : 'student@university.edu.pk')
-        }
-        registrant={activeDialogRegistrant || undefined}
-        onLeaveRoom={() => {
-          roomAccessService.leaveRoom(activeRoomData.sessionToken);
-          setActiveRoomData(null);
-          onNotify(`Left room "${activeRoomData.room.roomName}".`);
-        }}
-        onNotify={onNotify}
-      />
-    );
-  }
-
   return (
     <div id="payment-review-page" className="w-full space-y-6 animate-fadeIn pb-12">
       {/* Top Header */}
@@ -547,67 +402,16 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
           </button>
           <div>
             <h1 className="font-poppins font-semibold text-2xl text-white">
-              {canReview ? 'Registrants & Session Access Review' : 'My Registration Status'}
+              {canReview ? 'Registrants & Payment Review' : 'My Registration Status'}
             </h1>
             <p className="text-xs font-inter text-[var(--text-sec-80)] mt-0.5">
               {canReview
-                ? 'Verify payment receipts, allocate session room access codes, and track certificate eligibility.'
-                : 'Track your registered sessions, fee payment confirmation status, and live room access.'}
+                ? 'Verify payment receipts and track certificate eligibility.'
+                : 'Track your registered sessions and fee payment confirmation status.'}
             </p>
           </div>
         </div>
       </div>
-
-      {/* Admin & Super Admin Step-by-Step Code Allocation Guide Banner */}
-      {canReview && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-black/30 border border-purple-500/30 backdrop-blur-xl space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-300">
-                <KeyRound className="w-4 h-4" />
-              </span>
-              <h2 className="font-poppins font-semibold text-sm sm:text-base text-white">
-                Admin & Super Admin Guide: How to Allocate Session Room Access Codes to Students
-              </h2>
-            </div>
-            <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-200 border border-purple-500/30">
-              {currentRole === 'super_admin' ? '👑 Super Admin Authority' : '🛡️ Admin Authority'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-white/80">
-            <div className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-1">
-              <strong className="text-white flex items-center gap-1.5 text-xs font-semibold">
-                <span className="w-5 h-5 rounded-full bg-purple-500/30 text-purple-200 flex items-center justify-center text-[10px] font-bold">1</span>
-                Filter Eligible Students (Paid / Registered):
-              </strong>
-              <p className="text-[11px] text-white/60">
-                Click <strong>"Paid / Approved Only"</strong> in the filter bar below to instantly display only students whose payments and registrations have been verified.
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-1">
-              <strong className="text-white flex items-center gap-1.5 text-xs font-semibold">
-                <span className="w-5 h-5 rounded-full bg-emerald-500/30 text-emerald-200 flex items-center justify-center text-[10px] font-bold">2</span>
-                Allocate the Room Code:
-              </strong>
-              <p className="text-[11px] text-white/60">
-                Click <strong>"Allocate Code"</strong> on an individual student row, or use the multi-select checkboxes and click <strong>"Bulk Allocate to All Paid"</strong> to dispatch codes in batch.
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-1">
-              <strong className="text-white flex items-center gap-1.5 text-xs font-semibold">
-                <span className="w-5 h-5 rounded-full bg-cyan-500/30 text-cyan-200 flex items-center justify-center text-[10px] font-bold">3</span>
-                Real-Time Student Notification:
-              </strong>
-              <p className="text-[11px] text-white/60">
-                As soon as the access code is dispatched, it arrives immediately in the student's in-app notification bell (🔔). The student can then unlock and enter the live session room without delay.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Search, Filter Pills & Bulk Action Bar */}
       <div className="space-y-3">
@@ -647,52 +451,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
             >
               Payment Pending ({accessibleRegistrants.filter((r) => r.status === 'pending').length})
             </button>
-            {canReview && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setFilterStatus('code_needed')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                    filterStatus === 'code_needed'
-                      ? 'bg-purple-500/30 text-purple-200 border border-purple-500/40 shadow'
-                      : 'text-white/60 hover:text-white'
-                  }`}
-                >
-                  Code Needed (
-                  {
-                    accessibleRegistrants.filter(
-                      (r) =>
-                        (r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0') &&
-                        !roomAccessService.getDispatchForParticipant(
-                          r.sessionId,
-                          r.email || r.primaryEmail || ''
-                        )
-                    ).length
-                  }
-                  )
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterStatus('code_allocated')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                    filterStatus === 'code_allocated'
-                      ? 'bg-indigo-500/30 text-indigo-200 border border-indigo-500/40 shadow'
-                      : 'text-white/60 hover:text-white'
-                  }`}
-                >
-                  Code Allocated (
-                  {
-                    accessibleRegistrants.filter((r) =>
-                      roomAccessService.getDispatchForParticipant(
-                        r.sessionId,
-                        r.email || r.primaryEmail || ''
-                      )
-                    ).length
-                  }
-                  )
-                </button>
-              </>
-            )}
           </div>
 
           {/* Search Input */}
@@ -718,68 +476,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
           </div>
         </div>
 
-        {/* Super Admin & Admin Bulk Allocation Action Toolbar */}
-        {canReview && (
-          <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => toggleSelectAll(filteredRegistrants)}
-                className="flex items-center gap-1.5 text-xs text-white/70 hover:text-white cursor-pointer"
-              >
-                {selectedRegistrantIds.length === filteredRegistrants.length && filteredRegistrants.length > 0 ? (
-                  <CheckSquare className="w-4 h-4 text-[var(--primary-accent)]" />
-                ) : (
-                  <Square className="w-4 h-4 text-white/40" />
-                )}
-                <span>Select All Filtered ({filteredRegistrants.length})</span>
-              </button>
-
-              {selectedRegistrantIds.length > 0 && (
-                <span className="text-xs text-purple-300 font-medium">
-                  {selectedRegistrantIds.length} attendee(s) selected
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Batch Allocate to Selected */}
-              {selectedRegistrantIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleBulkAllocateCodes(
-                      filteredRegistrants.filter((r) => selectedRegistrantIds.includes(r.id))
-                    )
-                  }
-                  className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Allocate Codes to Selected ({selectedRegistrantIds.length})</span>
-                </button>
-              )}
-
-              {/* Instant Allocate to All Approved in Current Filter */}
-              <button
-                type="button"
-                onClick={() => handleBulkAllocateCodes(filteredRegistrants)}
-                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
-                title="Send room access code to all approved attendees in current filter"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>
-                  Bulk Allocate to All Paid / Approved (
-                  {
-                    filteredRegistrants.filter(
-                      (r) => r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0'
-                    ).length
-                  }
-                  )
-                </span>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Registrations List Section */}
@@ -832,7 +528,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                   amount: reg.amount && !reg.amount.includes('0') ? 500 : 0,
                 } as SessionItem);
 
-              const room = roomAccessService.getOrCreateRoomForSession(session);
               const isSessionClosed = session.status === 'closed';
               const isPaidSession =
                 !!session.isPaid ||
@@ -842,12 +537,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
               const isRegistrationPending =
                 reg.lifecycleStatus === 'FORM_IN_PROGRESS' ||
                 reg.lifecycleStatus === 'SUBMITTED';
-
-              const userDispatch = roomAccessService.getDispatchForParticipant(
-                reg.sessionId,
-                reg.email || reg.primaryEmail || ''
-              );
-              const hasDispatchedCode = !!userDispatch;
 
               return (
                 <div
@@ -949,31 +638,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                               <span>Reject</span>
                             </button>
                           </div>
-                        ) : (reg.status === 'approved' || reg.amount?.includes('Free') || reg.amount === '0') ? (
-                          hasDispatchedCode ? (
-                            <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30">
-                              <span className="font-mono text-xs font-semibold text-emerald-300 flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                Code: {userDispatch?.accessCodeSent}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleSendRoomCode(reg)}
-                                className="px-2.5 py-1 rounded-lg bg-purple-900/60 text-purple-200 text-xs font-medium cursor-pointer"
-                              >
-                                Resend
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleSendRoomCode(reg)}
-                              className="w-full py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow cursor-pointer transition-all active:scale-95"
-                            >
-                              <KeyRound className="w-3.5 h-3.5" />
-                              <span>Allocate Room Code</span>
-                            </button>
-                          )
                         ) : reg.status === 'rejected' ? (
                           <div className="text-center text-xs text-rose-300 font-medium py-1">
                             Rejected • Waiting for Student Resubmission
@@ -997,16 +661,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                           </button>
                         ) : isSessionClosed ? (
                           <div className="text-center text-xs text-white/50 py-1">Session Closed</div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenRoomCodeDialog(session, reg)}
-                            className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow cursor-pointer transition-all active:scale-95"
-                          >
-                            <KeyRound className="w-3.5 h-3.5" />
-                            <span>Enter Session Room</span>
-                          </button>
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -1040,7 +695,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                     <th className="py-3 px-4">Receipt Slip</th>
                     <th className="py-3 px-4">Status & Schema</th>
                     <th className="py-3 px-4">Certificate Eligibility</th>
-                    <th className="py-3 px-4 text-right">Actions & Room Code</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.06]">
@@ -1072,7 +727,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                       amount: reg.amount && !reg.amount.includes('0') ? 500 : 0,
                     } as SessionItem);
 
-                  const room = roomAccessService.getOrCreateRoomForSession(session);
                   const isSessionClosed = session.status === 'closed';
                   const isPaidSession =
                     !!session.isPaid ||
@@ -1081,16 +735,9 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                       !reg.amount.toLowerCase().includes('free'));
                   const isPaymentPending = isPaidSession && reg.status === 'pending';
                   const isPaymentRejected = isPaidSession && reg.status === 'rejected';
-                  const isPaymentApproved = !isPaidSession || reg.status === 'approved';
                   const isRegistrationPending =
                     reg.lifecycleStatus === 'FORM_IN_PROGRESS' ||
                     reg.lifecycleStatus === 'SUBMITTED';
-                  const isRoomLocked = room.status === 'revoked' || room.status === 'locked';
-                  const userDispatch = roomAccessService.getDispatchForParticipant(
-                    reg.sessionId,
-                    reg.email || reg.primaryEmail || ''
-                  );
-                  const hasDispatchedCode = !!userDispatch;
 
                   return (
                     <tr
@@ -1191,38 +838,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                       {canReview ? (
                         <div className="flex flex-col items-end gap-1.5">
                           <div className="flex items-center justify-end gap-1.5">
-                            {/* If payment approved (or free): Allocate Room Code or Resend */}
-                            {(reg.status === 'approved' || reg.amount?.includes('Free') || reg.amount === '0') ? (
-                              <div className="flex items-center gap-1.5">
-                                {hasDispatchedCode ? (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-mono font-semibold px-2 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shadow-sm">
-                                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                      <span>Code: {userDispatch?.accessCodeSent}</span>
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSendRoomCode(reg)}
-                                      className="px-2 py-1 rounded-lg bg-purple-900/60 hover:bg-purple-800/80 text-purple-200 border border-purple-500/40 text-[11px] font-medium cursor-pointer transition-all active:scale-95"
-                                      title="Resend code notification to participant"
-                                    >
-                                      Resend
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSendRoomCode(reg)}
-                                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs cursor-pointer flex items-center gap-1.5 shadow transition-all active:scale-95"
-                                    title="Allocate and send unique room access code to this student"
-                                  >
-                                    <KeyRound className="w-3.5 h-3.5" />
-                                    <span>Allocate Room Code</span>
-                                  </button>
-                                )}
-                              </div>
-                            ) : null}
-
                             {reg.status !== 'approved' && (
                               <button
                                 type="button"
@@ -1251,11 +866,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                             )}
                           </div>
 
-                          {hasDispatchedCode && (
-                            <span className="text-[10px] text-purple-300/80 font-mono flex items-center gap-1">
-                              <span>Delivered to {reg.name}'s Notifications</span>
-                            </span>
-                          )}
                         </div>
                       ) : (
                         /* Student & Guest View in My Registrations */
@@ -1279,7 +889,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                                 <span>Payment Pending</span>
                               </span>
                               <span className="block text-[10px] text-amber-200/70">
-                                Room access locked until verification
+                                Access becomes available after verification
                               </span>
                             </div>
                           ) : isPaymentRejected ? (
@@ -1300,42 +910,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                                 Resubmit Slip
                               </button>
                             </div>
-                          ) : isRoomLocked ? (
-                            /* State 5: Room Access Not Available */
-                            <div className="text-right space-y-0.5">
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-inter font-medium bg-rose-950/70 text-rose-300 border border-rose-500/40">
-                                <Lock className="w-3.5 h-3.5 text-rose-400" />
-                                <span>Room Access Not Available</span>
-                              </span>
-                              <span className="block text-[10px] text-rose-200/70">
-                                Locked by host
-                              </span>
-                            </div>
-                          ) : (
-                            /* State 6: Eligible! (Paid & Approved OR Free session) -> Show Enter Session Room */
-                            <div className="flex flex-col items-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenRoomCodeDialog(session, reg)}
-                                className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-inter font-medium text-xs shadow-lg shadow-purple-900/30 flex items-center gap-1.5 cursor-pointer transition-all"
-                                title="Open Room Code Input & Enter Session Room"
-                              >
-                                <KeyRound className="w-3.5 h-3.5 text-purple-200" />
-                                <span>Enter Session Room</span>
-                              </button>
-
-                              {hasDispatchedCode ? (
-                                <span className="text-[10px] text-purple-300 font-mono flex items-center gap-1">
-                                  <CheckCircle2 className="w-3 h-3 text-purple-400" />
-                                  <span>Code Dispatched</span>
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-emerald-300 font-mono">
-                                  Room Access Ready
-                                </span>
-                              )}
-                            </div>
-                          )}
+                          ) : null}
                         </div>
                       )}
                     </td>
@@ -1708,25 +1283,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
         </div>
       )}
 
-      {/* Existing Room Code Input Dialog (reused without duplication) */}
-      {activeDialogSession && (
-        <RoomCodeInputDialog
-          session={activeDialogSession}
-          currentUserEmail={
-            currentUserEmail ||
-            (currentRole === 'guest'
-              ? 'sarah.connor@industrytech.io'
-              : 'student@university.edu.pk')
-          }
-          registrant={activeDialogRegistrant || undefined}
-          isOpen={isRoomCodeModalOpen}
-          onClose={() => setIsRoomCodeModalOpen(false)}
-          onAuthorized={(authData) => {
-            setActiveRoomData(authData);
-          }}
-          onNotify={onNotify}
-        />
-      )}
     </div>
   );
 };
