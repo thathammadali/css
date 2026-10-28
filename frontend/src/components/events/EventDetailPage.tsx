@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   ArrowLeft,
   Calendar,
@@ -12,7 +12,6 @@ import {
   Building,
   AlertCircle,
   CheckCircle2,
-  XCircle,
   Plus,
   ArrowRight,
   Edit3,
@@ -32,8 +31,7 @@ interface EventDetailPageProps {
   onSelectSession: (session: SessionItem) => void;
   onAddSessionToEvent: (event: EventItem) => void;
   onEditEvent?: (event: EventItem) => void;
-  onApproveEvent: (eventId: string) => void;
-  onRejectEvent: (eventId: string, reason: string) => void;
+  onApproveEvent: (eventId: string) => void | Promise<void>;
   onNotify: (msg: string) => void;
 }
 
@@ -46,23 +44,8 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
   onAddSessionToEvent,
   onEditEvent,
   onApproveEvent,
-  onRejectEvent,
   onNotify,
 }) => {
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-
-  // Escape key handler for reject modal
-  useEffect(() => {
-    if (!showRejectModal) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key === 'Esc') {
-        setShowRejectModal(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showRejectModal]);
 
   const isSuperAdmin = currentRole === 'super_admin';
   const isAdmin = currentRole === 'admin';
@@ -108,16 +91,6 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
   const handleApprove = () => {
     onApproveEvent(event.id);
     onNotify(`Event "${event.title}" is now officially published!`);
-  };
-
-  const handleConfirmReject = () => {
-    if (!rejectReason.trim()) {
-      onNotify('Please provide a reason for returning this event to draft.');
-      return;
-    }
-    onRejectEvent(event.id, rejectReason.trim());
-    setShowRejectModal(false);
-    onNotify(`Event "${event.title}" returned to draft.`);
   };
 
   return (
@@ -193,15 +166,6 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Approve & Publish to Campus</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowRejectModal(true)}
-                className="px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-red-500/20 border border-white/10 hover:border-red-500/30 text-white hover:text-red-200 text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
-              >
-                <XCircle className="w-4 h-4 text-red-400" />
-                <span>Return to Draft with Feedback</span>
               </button>
             </div>
           ) : (
@@ -403,47 +367,6 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
         )}
       </div>
 
-      {/* Reject Modal */}
-      {showRejectModal && (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowRejectModal(false);
-          }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
-        >
-          <div className="w-full max-w-md p-6 rounded-2xl glass-panel border border-white/20 space-y-4">
-            <h3 className="font-poppins font-semibold text-lg text-white">
-              Return Event to Draft
-            </h3>
-            <p className="text-xs text-[var(--text-secondary)]">
-              Specify the reasons or required adjustments for the society administrator before this event can be approved.
-            </p>
-            <textarea
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="e.g. Please clarify venue capacity, attach laboratory curriculum, and fix the registration fee."
-              rows={4}
-              className="w-full p-3 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowRejectModal(false)}
-                className="px-3.5 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-xs text-white cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmReject}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-semibold text-white cursor-pointer shadow"
-              >
-                Return to Draft
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

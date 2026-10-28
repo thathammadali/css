@@ -227,6 +227,8 @@ export interface EventItem {
   sessions: SessionItem[];
   registrationDeadline: string;
   paymentDeadline?: string;
+  locationType?: 'on_campus' | 'virtual' | 'hybrid';
+  capacity?: number | null;
   isPaid: boolean;
   feeAmount: number;
   createdBy: string;

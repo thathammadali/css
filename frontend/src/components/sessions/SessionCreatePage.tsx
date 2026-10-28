@@ -53,6 +53,36 @@ const TIMEZONES = [
   'AEST (UTC+10:00)',
 ];
 
+const SESSION_TIMEZONE = 'Asia/Karachi';
+
+function formatDateForInput(value: string | undefined, timezone: string): string {
+  const text = String(value ?? '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(parsed);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function formatTimeForInput(value: string | undefined, timezone: string): string {
+  const text = String(value ?? '').trim();
+  if (/^\d{2}:\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(parsed);
+}
+
 export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
   currentRole,
   initialSession,
@@ -62,53 +92,94 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
   onSave,
   onNotify,
 }) => {
-  const [selectedEventId, setSelectedEventId] = useState<string>(
-    initialSession?.eventId || preselectedEventId || (availableEvents[0]?.id || '')
+  const initialSessionTimezone = String(initialSession?.timezone ?? '');
+  const initialTimezone = TIMEZONES.includes(initialSessionTimezone)
+    ? initialSessionTimezone
+    : 'PKT (UTC+5:00)';
+  const initialLinks = initialSession?.meeting_links ?? [];
+  const hasInitialLocation = Boolean(
+    String(initialSession?.location ?? '').trim() &&
+      String(initialSession?.location ?? '').trim().toLowerCase() !== 'tba'
   );
-  const [title, setTitle] = useState(initialSession?.title || '');
-  const [description, setDescription] = useState(initialSession?.description || '');
-  const [date, setDate] = useState(initialSession?.date || '');
+  const hasInitialLinks = initialLinks.length > 0 || Boolean(initialSession?.meetingUrl);
+
+  const [selectedEventId, setSelectedEventId] = useState<string>(
+    String(initialSession?.eventId ?? preselectedEventId ?? availableEvents[0]?.id ?? '')
+  );
+  const [title, setTitle] = useState(String(initialSession?.title ?? ''));
+  const [description, setDescription] = useState(String(initialSession?.description ?? ''));
+  const [date, setDate] = useState(() =>
+    formatDateForInput(initialSession?.startTime || initialSession?.date, SESSION_TIMEZONE)
+  );
   const [startTime, setStartTime] = useState(
-    initialSession?.time ? initialSession.time.split('–')[0]?.trim() : '14:00'
+    () =>
+      formatTimeForInput(
+        initialSession?.startTime || initialSession?.time?.split(/[–-]/)[0],
+        SESSION_TIMEZONE
+      ) || '14:00'
   );
   const [endTime, setEndTime] = useState(
-    initialSession?.time ? initialSession.time.split('–')[1]?.trim() : '17:30'
+    () =>
+      formatTimeForInput(
+        initialSession?.endTime || initialSession?.time?.split(/[–-]/)[1],
+        SESSION_TIMEZONE
+      ) || '17:30'
   );
-  const [timezone, setTimezone] = useState(initialSession?.timezone || 'PKT (UTC+5:00)');
+  const [timezone, setTimezone] = useState(initialTimezone);
 
   // Delivery Mode: In-Person / Online / Hybrid
   const [deliveryMode, setDeliveryMode] = useState<'in_person' | 'online' | 'hybrid'>(
-    initialSession?.isOnline && !initialSession.location ? 'online' : initialSession?.isOnline ? 'hybrid' : 'in_person'
+    initialSession
+      ? hasInitialLocation && hasInitialLinks
+        ? 'hybrid'
+        : hasInitialLinks
+        ? 'online'
+        : 'in_person'
+      : 'in_person'
   );
-  const [location, setLocation] = useState(initialSession?.location || 'Engineering Hall A-102');
+  const [location, setLocation] = useState(
+    String(initialSession?.location ?? 'Engineering Hall A-102')
+  );
   type LinkRow = { url: string; label: string; isPublic: boolean };
   const [linkRows, setLinkRows] = useState<LinkRow[]>(() => {
     const existing: LinkRow[] = initialSession?.meeting_links?.length
-      ? initialSession.meeting_links.map((l) => ({ url: l.url, label: l.label || '', isPublic: l.public }))
+      ? initialSession.meeting_links.map((l) => ({
+          url: String(l.url ?? ''),
+          label: String(l.label ?? ''),
+          isPublic: Boolean(l.public),
+        }))
       : initialSession?.meetingUrl
-      ? [{ url: initialSession.meetingUrl, label: '', isPublic: false }]
+      ? [{ url: String(initialSession.meetingUrl), label: '', isPublic: false }]
       : [];
     return existing.length ? existing : [{ url: '', label: '', isPublic: false }];
   });
   const meetingUrl = linkRows[0]?.url || '';
-  const [meetingDetails, setMeetingDetails] = useState(initialSession?.meetingDetails || '');
+  const [meetingDetails, setMeetingDetails] = useState(
+    String(initialSession?.meetingDetails ?? '')
+  );
 
   // Category selection & Custom Category support
   const parentEvt = availableEvents.find((e) => e.id === (initialSession?.eventId || preselectedEventId));
-  const initialCategoryVal = initialSession?.category || parentEvt?.category || 'Technical Workshop';
+  const initialCategoryVal = String(
+    initialSession?.category ?? parentEvt?.category ?? 'Technical Workshop'
+  );
   const isInitiallyCustom = !PREDEFINED_SESSION_CATEGORIES.includes(initialCategoryVal);
 
   const [category, setCategory] = useState(isInitiallyCustom ? 'Custom' : initialCategoryVal);
   const [isCustomCategory, setIsCustomCategory] = useState(isInitiallyCustom);
-  const [customCategoryInput, setCustomCategoryInput] = useState(isInitiallyCustom ? initialCategoryVal : '');
+  const [customCategoryInput, setCustomCategoryInput] = useState(
+    isInitiallyCustom ? initialCategoryVal : ''
+  );
 
   // Capacity / Seats
   const [totalSeats, setTotalSeats] = useState<number>(initialSession?.totalSeats || 60);
 
   // Society / Organizer
   const [society, setSociety] = useState(
-    initialSession?.society ||
+    String(
+      initialSession?.society ??
       (parentEvt?.organizer || 'Robotics & AI Society')
+    )
   );
 
   // Registration & Payment controls
@@ -116,7 +187,7 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
     initialSession?.registrationRequired !== undefined ? initialSession.registrationRequired : true
   );
   const [registrationDeadline, setRegistrationDeadline] = useState(
-    initialSession?.registrationDeadline || ''
+    String(initialSession?.registrationDeadline ?? '')
   );
   const [paymentRequired, setPaymentRequired] = useState(
     initialSession?.isPaid !== undefined ? initialSession.isPaid : false
@@ -199,56 +270,67 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
     // 2. Submit / loading state
     setIsSubmitting(true);
 
-    const formattedTime = `${startTime} – ${endTime}`;
+    const formattedTime = `${String(startTime ?? '')} – ${String(endTime ?? '')}`;
     const parentEvent = availableEvents.find((evt) => evt.id === selectedEventId);
     const resolvedCategory = isCustomCategory
-      ? customCategoryInput.trim()
-      : category || parentEvent?.category || 'General Session';
+      ? String(customCategoryInput ?? '').trim()
+      : String(category ?? parentEvent?.category ?? 'General Session').trim();
 
     const isOnlineMode = deliveryMode === 'online' || deliveryMode === 'hybrid';
     const computedLocation = deliveryMode === 'online'
-      ? (meetingDetails ? `Online (${meetingDetails})` : 'Virtual Session')
-      : location.trim();
+      ? (String(meetingDetails ?? '').trim()
+        ? `Online (${String(meetingDetails ?? '').trim()})`
+        : 'Virtual Session')
+      : String(location ?? '').trim();
+    const safeTitle = String(title ?? '').trim();
+    const safeDescription = String(description ?? '').trim();
+    const safeDate = String(date ?? '').trim();
+    const safeStartTime = String(startTime ?? '').trim();
+    const safeEndTime = String(endTime ?? '').trim();
+    const safeTimezone = String(timezone ?? '').trim();
+    const safeMeetingUrl = String(meetingUrl ?? '').trim();
+    const safeRegistrationDeadline = String(registrationDeadline ?? '').trim();
+    const safeSociety = String(society ?? '').trim();
 
     const newSession: SessionItem = {
       id: initialSession?.id || `sess-${Date.now()}`,
       eventId: selectedEventId,
       parentEventTitle: parentEvent?.title || initialSession?.parentEventTitle || 'Campus Event',
-      title: title.trim(),
-      description: description.trim() || 'No description provided.',
-      date: date.trim(),
+      title: safeTitle,
+      description: safeDescription || 'No description provided.',
+      date: safeDate,
       time: formattedTime,
-      startTime: startTime.trim(),
-      endTime: endTime.trim(),
-      timezone: timezone.trim(),
+      startTime: safeStartTime,
+      endTime: safeEndTime,
+      timezone: safeTimezone,
       location: computedLocation,
       isOnline: isOnlineMode,
-      meetingUrl: isOnlineMode ? meetingUrl.trim() : undefined,
+      meetingUrl: isOnlineMode ? safeMeetingUrl : undefined,
       meeting_links: isOnlineMode
         ? linkRows
-            .filter((r) => r.url.trim())
+            .filter((r) => String(r.url ?? '').trim())
             .map((r) => ({
               platform: 'other' as const,
-              label: r.label.trim() || null,
-              url: r.url.trim(),
+              label: String(r.label ?? '').trim() || null,
+              url: String(r.url ?? '').trim(),
               public: r.isPublic,
             }))
-        : [],
-      meetingDetails: isOnlineMode ? meetingDetails.trim() : undefined,
-      society: society.trim() || parentEvent?.organizer || 'University Society',
+        : undefined,
+      meetingDetails: isOnlineMode ? String(meetingDetails ?? '').trim() : undefined,
+      society: safeSociety || parentEvent?.organizer || 'University Society',
       status: initialSession?.status || 'open',
       capacity: `0 / ${totalSeats} slots filled`,
       totalSeats: Number(totalSeats) || 60,
       seatsRemaining: Number(totalSeats) || 60,
       category: resolvedCategory,
       registrationRequired: registrationRequired,
-      registrationDeadline: registrationDeadline.trim() || undefined,
+      registrationDeadline: safeRegistrationDeadline || undefined,
       isPaid: paymentRequired,
       amount: paymentRequired ? Number(amount) : 0,
       resources: initialSession?.resources || [
         {
           id: `res-${Date.now()}`,
-          name: `${title.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}_agenda.pdf`,
+          name: `${safeTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}_agenda.pdf`,
           size: '1.2 MB',
           type: 'pdf',
           category: 'pdf',

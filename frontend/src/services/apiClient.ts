@@ -306,9 +306,13 @@ export function mapBackendSession(
   const tz: string = raw.timezone || 'Asia/Karachi';
   const registered = Number(raw.registered_count ?? 0);
   const cap = raw.capacity ?? meta?.eventCapacity ?? null;
-  const totalSeats = cap && cap > 0 ? Number(cap) : undefined;
+  const numericCapacity = Number(cap);
+  const totalSeats = Number.isFinite(numericCapacity) && numericCapacity > 0 ? numericCapacity : undefined;
   const seatsRemaining = totalSeats !== undefined ? Math.max(totalSeats - registered, 0) : undefined;
-  const meetingLink = raw.meeting_link ?? null;
+  const rawLinks = Array.isArray(raw.meeting_links)
+    ? raw.meeting_links.filter((link: any) => link && typeof link.url === 'string')
+    : [];
+  const meetingLink = raw.meeting_link ?? rawLinks.find((link: any) => link.public !== false)?.url ?? rawLinks[0]?.url ?? null;
 
   const now = Date.now();
   const startMs = startsAt ? new Date(startsAt).getTime() : NaN;
@@ -343,13 +347,17 @@ export function mapBackendSession(
     location: raw.location || 'TBA',
     meetingUrl: meetingLink || undefined,
     meeting_link: meetingLink,
-    meeting_links: Array.isArray(raw.meeting_links) ? raw.meeting_links : [],
+    meeting_links: rawLinks,
     speaker: raw.speaker ?? null,
     registered_count: registered,
     status,
-    capacity: raw.capacity || `${registered} registered`,
+    capacity: totalSeats !== undefined
+      ? `${registered} / ${totalSeats} slots filled`
+      : `${registered} registered`,
     totalSeats,
     seatsRemaining,
+    timezone: tz,
+    isOnline: Boolean(meetingLink) || rawLinks.length > 0,
     category: meta?.category,
     description: raw.description || meta?.description || '',
     registrationRequired: true,
@@ -538,10 +546,12 @@ export const eventsApi = {
 
   async updateSession(eventId: string, sessionId: string, patch: Record<string, unknown>): Promise<SessionItem> {
     // patch uses backend names: title, starts_at, ends_at, timezone, location, capacity, meeting_link, speaker
+    const requestPatch = { ...patch };
+    if (requestPatch.meeting_links === undefined) delete requestPatch.meeting_links;
     const raw = await jsonRequest(
       'PATCH',
       `/events/${encodeURIComponent(eventId)}/sessions/${encodeURIComponent(sessionId)}`,
-      patch
+      requestPatch
     );
     return mapBackendSession(raw, eventId);
   },

@@ -42,7 +42,7 @@ import { DEMO_MODE } from './config';
 import { userService } from './services/userService';
 import { eventService } from './services/eventService';
 import { formService } from './services/formService';
-import { apiFetch, getStoredAuthToken, setStoredAuthToken } from './services/apiClient';
+import { apiFetch, eventsApi, getStoredAuthToken, setStoredAuthToken } from './services/apiClient';
 
 const STORAGE_LOGIN_KEY = 'sems_is_logged_in';
 const STORAGE_REGISTRANTS_KEY = 'sems_registrants';
@@ -852,15 +852,21 @@ export default function App() {
                   setRegistrants(updated);
                   showNotification('Registration records updated.');
                 }}
-                onApproveEvent={(evtId) => {
-                  const res = eventService.approveEvent(
-                    evtId,
-                    currentRole,
-                    user?.primaryEmail || user?.email || 'superadmin@university.edu.pk'
-                  );
-                  if (res) {
+                onApproveEvent={async (evtId) => {
+                  if (currentRole !== 'super_admin') {
+                    showNotification('Unauthorized: Only Super Admin can approve events for publication.');
+                    return;
+                  }
+
+                  try {
+                    const res = await eventsApi.publishEvent(evtId);
+                    await eventService.refreshFromBackend();
                     setEvents(eventService.getEvents());
                     showNotification(`Event "${res.title}" approved & published to campus!`);
+                  } catch (error: any) {
+                    const message = error?.message || 'Failed to publish event.';
+                    showNotification(message);
+                    throw error;
                   }
                 }}
               />
