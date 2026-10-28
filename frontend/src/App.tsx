@@ -34,7 +34,6 @@ import {
   CertificateItem,
   RegistrationFormConfig,
 } from './types';
-import { INITIAL_REGISTRANTS } from './data/mockRegistrations';
 import { INITIAL_CERTIFICATES } from './data/mockCertificates';
 import { DEFAULT_REGISTRATION_FORM } from './data/mockForms';
 import { getRoleDisplayName, identifyRoleFromEmail } from './utils/roleUtils';
@@ -43,9 +42,9 @@ import { userService } from './services/userService';
 import { eventService } from './services/eventService';
 import { formService } from './services/formService';
 import { apiFetch, eventsApi, getStoredAuthToken, setStoredAuthToken } from './services/apiClient';
+import { registrationApi } from './services/registrationApi';
 
 const STORAGE_LOGIN_KEY = 'sems_is_logged_in';
-const STORAGE_REGISTRANTS_KEY = 'sems_registrants';
 const STORAGE_CERTIFICATES_KEY = 'sems_certificates';
 const STORAGE_ACTIVE_SESSION_KEY = 'sems_active_session';
 const STORAGE_ACTIVE_TAB_KEY = 'sems_active_tab';
@@ -139,19 +138,7 @@ export default function App() {
     return visibleEvents.flatMap((e) => e.sessions);
   }, [visibleEvents]);
 
-  // Shared registrations state with localStorage persistence
-  const [registrants, setRegistrants] = useState<RegistrantItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_REGISTRANTS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed to load registrants from localStorage', e);
-    }
-    return DEMO_MODE ? INITIAL_REGISTRANTS : [];
-  });
+  const [registrants, setRegistrants] = useState<RegistrantItem[]>([]);
 
   // Shared certificates state with localStorage persistence
   const [certificates, setCertificates] = useState<CertificateItem[]>(() => {
@@ -170,14 +157,36 @@ export default function App() {
   // Dynamic Registration Form Configuration configured by Head/Admin (Preserved across versions)
   const [formConfig, setFormConfig] = useState<RegistrationFormConfig>(() => formService.getActiveForm());
 
-  // Auto-sync registrants to localStorage whenever updated
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_REGISTRANTS_KEY, JSON.stringify(registrants));
-    } catch (e) {
-      console.warn('Failed to save registrants to localStorage', e);
+  const reloadRegistrants = useCallback(async () => {
+    if (!user?.isBackendConnected || !getStoredAuthToken()) {
+      setRegistrants([]);
+      return;
     }
-  }, [registrants]);
+
+    try {
+      if (currentRole === 'admin' || currentRole === 'super_admin') {
+        const all = await Promise.all(
+          eventService
+            .getEvents()
+            .flatMap((event) => event.sessions || [])
+            .map((session) => registrationApi.forSession(session.id))
+        );
+        setRegistrants(all.flat());
+      } else {
+        setRegistrants(await registrationApi.mine());
+      }
+    } catch (error: any) {
+      setRegistrants([]);
+      showNotification(error?.message || 'Failed to load registrations.');
+    }
+  }, [currentRole, sessions, user?.isBackendConnected]);
+
+  useEffect(() => {
+    reloadRegistrants();
+    const onFocus = () => reloadRegistrants();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [reloadRegistrants]);
 
   // Auto-sync certificates to localStorage whenever updated
   useEffect(() => {
@@ -677,9 +686,11 @@ export default function App() {
               registrants={registrants}
               onUpdateEvents={() => {}}
               onRegisterNewParticipant={(newReg) => {
-                setRegistrants((prev) => [newReg, ...prev]);
-                showNotification(`Registration saved for ${newReg.sessionTitle}`);
+                return reloadRegistrants().then(() =>
+                  showNotification(`Registration saved for ${newReg.sessionTitle}`)
+                );
               }}
+              onReloadRegistrants={reloadRegistrants}
               onNavigateHome={() => navigate('#/login')}
               onNavigateToAuth={(mode) => handleOpenAuth(mode)}
               onNotify={showNotification}
@@ -848,10 +859,6 @@ export default function App() {
                 onNavigateToCreateSession={() => {
                   navigate('#/sessions');
                 }}
-                onUpdateRegistrants={(updated) => {
-                  setRegistrants(updated);
-                  showNotification('Registration records updated.');
-                }}
                 onApproveEvent={async (evtId) => {
                   if (currentRole !== 'super_admin') {
                     showNotification('Unauthorized: Only Super Admin can approve events for publication.');
@@ -896,9 +903,11 @@ export default function App() {
                   showNotification('Event repository synchronized.');
                 }}
                 onRegisterNewParticipant={(newReg) => {
-                  setRegistrants((prev) => [newReg, ...prev]);
-                  showNotification(`Registration saved for ${newReg.sessionTitle}`);
+                  return reloadRegistrants().then(() =>
+                    showNotification(`Registration saved for ${newReg.sessionTitle}`)
+                  );
                 }}
+                onReloadRegistrants={reloadRegistrants}
                 onNavigateHome={() => navigate('#/home')}
                 onNavigateToAuth={handleOpenAuth}
                 onNotify={showNotification}
@@ -954,10 +963,7 @@ export default function App() {
                 registrants={registrants}
                 currentUserEmail={user?.primaryEmail || user?.email}
                 currentUserName={user?.name}
-                onUpdateRegistrants={(updated) => {
-                  setRegistrants(updated);
-                  showNotification('Registrant records & payment status synchronized.');
-                }}
+                onReloadRegistrants={reloadRegistrants}
                 onBack={() => navigate('#/home')}
                 onNotify={showNotification}
                 onNavigateToSession={handleNavigateToSession}
@@ -987,10 +993,7 @@ export default function App() {
                   registrants={registrants}
                   currentUserEmail={user?.primaryEmail || user?.email}
                   currentUserName={user?.name}
-                  onUpdateRegistrants={(updated) => {
-                    setRegistrants(updated);
-                    showNotification('Registrant records & payment status synchronized.');
-                  }}
+                  onReloadRegistrants={reloadRegistrants}
                   onBack={() => navigate('#/home')}
                   onNotify={showNotification}
                   onNavigateToSession={handleNavigateToSession}

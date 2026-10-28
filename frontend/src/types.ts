@@ -57,7 +57,7 @@ export type RegistrationLifecycleStatus =
   | 'ELIGIBLE_FOR_CERTIFICATE'
   | 'CERTIFICATE_ISSUED';
 
-export type PaymentStatus = 'pending' | 'approved' | 'rejected';
+export type PaymentStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 export type FormFieldType =
   | 'text'
@@ -260,6 +260,7 @@ export interface RegistrantItem {
   receiptPreviewUrl?: string;
   receiptRejectedReason?: string;
   status: PaymentStatus;
+  backendStatus?: 'PAYMENT_PENDING' | 'PAYMENT_REJECTED' | 'CONFIRMED' | 'CANCELLED';
   lifecycleStatus?: RegistrationLifecycleStatus;
   formVersionUsed?: number;
   submittedAt: string;

@@ -32,7 +32,8 @@ interface SessionsManagerProps {
   currentUserName?: string;
   registrants?: RegistrantItem[];
   onUpdateEvents: (updatedEvents: EventItem[]) => void;
-  onRegisterNewParticipant?: (registrant: RegistrantItem) => void;
+  onRegisterNewParticipant?: (registrant: RegistrantItem) => void | Promise<void>;
+  onReloadRegistrants?: () => Promise<void>;
   onNavigateHome: () => void;
   onNavigateToAuth: (mode?: 'login' | 'signup') => void;
   onNotify: (msg: string) => void;
@@ -52,6 +53,7 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
   registrants,
   onUpdateEvents,
   onRegisterNewParticipant,
+  onReloadRegistrants,
   onNavigateHome,
   onNavigateToAuth,
   onNotify,
@@ -142,16 +144,23 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
   };
 
   const handleOpenRegistration = (session: SessionItem) => {
+    if (currentRole === 'guest') {
+      onNotify('Please sign in before registering for a session.');
+      onNavigateToAuth('login');
+      return;
+    }
     setSelectedSessionId(session.id);
     setSubScreen('register');
   };
 
-  const handleRegistrationSuccess = (registrant: RegistrantItem) => {
+  const handleRegistrationSuccess = async (registrant: RegistrantItem) => {
     if (onRegisterNewParticipant) {
-      onRegisterNewParticipant(registrant);
+      await onRegisterNewParticipant(registrant);
+    } else if (onReloadRegistrants) {
+      await onReloadRegistrants();
     }
     onNotify(
-      `Registration submitted for "${selectedSession?.title || 'Session'}". Receipt sent for review.`
+      `Registration submitted for "${selectedSession?.title || 'Session'}".`
     );
     setSubScreen('detail');
   };
@@ -314,6 +323,7 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
         isRegistered={registeredSessionIds.includes(selectedSession.id)}
         currentUserEmail={currentUserEmail}
         currentUserName={currentUserName}
+        registrants={registrants}
         registrant={registrants?.find(
           (r) =>
             r.sessionId === selectedSession.id &&

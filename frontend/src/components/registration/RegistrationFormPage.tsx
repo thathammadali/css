@@ -23,16 +23,16 @@ import {
   RegistrantItem,
   RegistrationFormConfig,
 } from '../../types';
-import { notificationService } from '../../services/notificationService';
 import { getSessionCapacity } from '../../utils/capacityHelper';
 import { storageService } from '../../services/storageService';
+import { registrationApi } from '../../services/registrationApi';
 
 interface RegistrationFormPageProps {
   session?: SessionItem | null;
   formConfig: RegistrationFormConfig;
   currentRole: DashboardRole;
   onBack: () => void;
-  onSubmitSuccess: (registrant: RegistrantItem) => void;
+  onSubmitSuccess: (registrant: RegistrantItem) => void | Promise<void>;
   onNotify: (msg: string) => void;
   onGoToAuth: (mode: 'login' | 'signup') => void;
 }
@@ -104,6 +104,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
     compressedBytes?: number;
     mimeType?: string;
   } | null>(null);
+  const [receiptUploadFile, setReceiptUploadFile] = useState<File | null>(null);
 
   const [isCompressing, setIsCompressing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -135,6 +136,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
     }
 
     setIsCompressing(true);
+    setReceiptUploadFile(file);
     try {
       // Client-side Canvas downscaling: shrinks 2-10MB mobile photos to ~80-160KB
       const compressed = await storageService.compressImage(file);
@@ -275,124 +277,20 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
     setSubmitError(null);
 
     try {
-      let activeUser: any = null;
-      try {
-        const raw = localStorage.getItem('sems_active_session');
-        if (raw) activeUser = JSON.parse(raw);
-      } catch {
-        // safe fallback
+      if (!session?.id) {
+        throw new Error('Session is unavailable.');
       }
 
-      const registrantName = isGuest
-        ? guestName.trim()
-        : formValues['f-name'] || activeUser?.name || '';
-
-      const registrantPrimaryEmail = isGuest
-        ? guestEmail.trim()
-        : formValues['f-email'] || activeUser?.primaryEmail || activeUser?.email || '';
-
-      // Guest secondary email is only set if provided, avoiding identical email duplication
-      const registrantSecondaryEmail = isGuest
-        ? (guestSecondaryEmail.trim() ? guestSecondaryEmail.trim() : undefined)
-        : formValues['f-secondary-email'] || activeUser?.secondaryEmail || undefined;
-
-      const registrantRoll = isGuest
-        ? 'GUEST-ATTENDEE'
-        : formValues['f-roll'] || activeUser?.rollNumber || 'Not provided';
-
-      const newRegistrantId = `reg-${Date.now()}`;
-
-      // Persist to high-capacity IndexedDB and await completion before confirming
-      if (receiptFile?.previewUrl) {
-        try {
-          await storageService.saveFile({
-            key: `receipt_${newRegistrantId}`,
-            dataUrl: receiptFile.previewUrl,
-            fileName: receiptFile.name,
-            fileSize: receiptFile.compressedBytes || receiptFile.originalBytes || 100000,
-            mimeType: receiptFile.mimeType || 'image/jpeg',
-            createdAt: Date.now(),
-          });
-        } catch (storageErr: any) {
-          console.warn('IndexedDB receipt save notice:', storageErr);
-        }
+      let registration = await registrationApi.register(session.id);
+      if (session.isPaid && receiptUploadFile) {
+        registration = await registrationApi.uploadReceipt(registration.id, receiptUploadFile);
       }
-
-      const newRegistrant: RegistrantItem = {
-        id: newRegistrantId,
-        name: registrantName,
-        rollNumber: registrantRoll,
-        email: registrantPrimaryEmail,
-        primaryEmail: registrantPrimaryEmail,
-        secondaryEmail: registrantSecondaryEmail,
-        phone: isGuest ? guestPhone.trim() : formValues['f-phone'] || '',
-        institutionAffiliation: isGuest ? guestInstitution.trim() : 'University Class Member',
-        department: formValues['f-dept'] || activeUser?.department || 'Not provided',
-        wing: session?.society || 'Society',
-        sessionId: session?.id || 'sess-1',
-        sessionTitle: session?.title || 'Society Session',
-        amount: isWaitlistMode
-          ? (session?.isPaid ? `${session.amount} (Waitlist)` : 'Free (Waitlist)')
-          : (session?.isPaid ? `${session.amount}` : 'Free'),
-        isPaid: session?.isPaid || false,
-        receiptFileName: receiptFile?.name,
-        receiptFileSize: receiptFile?.size,
-        receiptPreviewUrl: receiptFile?.previewUrl,
-        status: isWaitlistMode ? 'pending' : (session?.isPaid ? 'pending' : 'approved'),
-        lifecycleStatus: isWaitlistMode ? 'WAITLISTED' : (session?.isPaid ? 'PAYMENT_PENDING' : 'CONFIRMED'),
-        isWaitlisted: isWaitlistMode,
-        waitlistPosition: isWaitlistMode ? capacityInfo.waitlistCount + 1 : undefined,
-        formVersionUsed: formConfig.version || 1,
-        submittedAt: new Date().toISOString().split('T')[0],
-        avatarInitials: registrantName.slice(0, 2).toUpperCase(),
-        customResponses: formValues,
-        isGuest,
-      };
-
-      // Persist record to application state and offline-first storage
-      onSubmitSuccess(newRegistrant);
-
-      // Authoritative persistent notifications
-      if (isWaitlistMode) {
-        notificationService.addNotification({
-          recipientEmail: newRegistrant.email || newRegistrant.primaryEmail,
-          type: 'registration_submitted',
-          title: 'Priority Waitlist Entry Confirmed',
-          message: `You are in queue position #${capacityInfo.waitlistCount + 1} for "${session?.title}". You will be notified when an enrolled seat opens up!`,
-          linkTab: 'registrants',
-          entityId: `reg-sub-${newRegistrant.id}`,
-        });
-        onNotify(`Waitlist entry recorded (Position #${capacityInfo.waitlistCount + 1}). Organizers notified!`);
-      } else {
-        notificationService.addNotification({
-          recipientEmail: newRegistrant.email || newRegistrant.primaryEmail,
-          type: session?.isPaid ? 'payment_pending' : 'registration_approved',
-          title: session?.isPaid ? 'Registration Submitted' : 'Registration Confirmed',
-          message: session?.isPaid
-            ? `Registration fee slip for "${session?.title || 'Workshop Session'}" received. Awaiting admin review.`
-            : `Your seat reservation for "${session?.title || 'Workshop Session'}" has been confirmed!`,
-          linkTab: 'registrants',
-          entityId: `reg-sub-${newRegistrant.id}`,
-        });
-
-        if (session?.isPaid) {
-          notificationService.addNotification({
-            recipientRole: 'admin',
-            type: 'payment_pending',
-            title: 'New Fee Slip Submitted',
-            message: `${registrantName} submitted a payment slip for "${session.title}".`,
-            linkTab: 'registrants',
-            entityId: `admin-slip-${newRegistrant.id}`,
-          });
-        }
-
-        onNotify(
-          session?.isPaid
-            ? 'Registration & receipt submitted! Society admin will review your payment.'
-            : 'Registration confirmed! Admission seat successfully reserved.'
-        );
-      }
-
+      await onSubmitSuccess(registration);
+      onNotify(
+        session.isPaid
+          ? 'Registration submitted. Your payment is pending admin review.'
+          : 'Registration confirmed! Admission seat successfully reserved.'
+      );
       // Success achieved: now transition to confirmed screen
       setStep('confirmed');
     } catch (err: any) {

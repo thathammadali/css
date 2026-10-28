@@ -32,7 +32,6 @@ import { SessionResourcesSection } from './SessionResourcesSection';
 import { SessionCommentsSection } from './SessionCommentsSection';
 import { SessionTasksSection } from './SessionTasksSection';
 import { eventService } from '../../services/eventService';
-import { INITIAL_REGISTRANTS } from '../../data/mockRegistrations';
 import { INITIAL_ATTENDANCE_RECORDS } from '../../data/mockAttendance';
 import { eligibilityService } from '../../services/eligibilityService';
 import { getSessionCapacity } from '../../utils/capacityHelper';
@@ -45,6 +44,7 @@ interface SessionDetailPageProps {
   currentUserEmail?: string;
   currentUserName?: string;
   registrant?: RegistrantItem;
+  registrants?: RegistrantItem[];
   onBack: () => void;
   onNavigateToAuth: () => void;
   onOpenRegistration?: (session: SessionItem) => void;
@@ -63,6 +63,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   currentUserEmail,
   currentUserName,
   registrant,
+  registrants = [],
   onBack,
   onNavigateToAuth,
   onOpenRegistration,
@@ -87,7 +88,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   // Derive registrant if not passed explicitly
   const effectiveRegistrant =
     registrant ||
-    INITIAL_REGISTRANTS.find(
+    registrants.find(
       (r) =>
         r.sessionId === session.id &&
         (r.email === currentUserEmail ||
@@ -108,7 +109,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
     registered &&
     (effectiveRegistrant?.lifecycleStatus === 'FORM_IN_PROGRESS' ||
       effectiveRegistrant?.lifecycleStatus === 'SUBMITTED');
-  const sessionRegistrants = INITIAL_REGISTRANTS.filter(
+  const sessionRegistrants = registrants.filter(
     (r) => r.sessionId === session.id
   );
 

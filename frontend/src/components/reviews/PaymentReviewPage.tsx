@@ -30,18 +30,16 @@ import {
   PaymentStatus,
   SessionItem,
 } from '../../types';
-import { auditService } from '../../services/userService';
 import { eligibilityService } from '../../services/eligibilityService';
-import { notificationService } from '../../services/notificationService';
 import { eventService } from '../../services/eventService';
-import { storageService } from '../../services/storageService';
+import { registrationApi } from '../../services/registrationApi';
 
 interface PaymentReviewPageProps {
   currentRole: DashboardRole;
   registrants: RegistrantItem[];
   currentUserEmail?: string;
   currentUserName?: string;
-  onUpdateRegistrants: (updated: RegistrantItem[]) => void;
+  onReloadRegistrants?: () => Promise<void>;
   onBack: () => void;
   onSelectRole?: (role: DashboardRole) => void;
   onNotify: (msg: string) => void;
@@ -57,7 +55,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
   registrants,
   currentUserEmail,
   currentUserName,
-  onUpdateRegistrants,
+  onReloadRegistrants,
   onBack,
   onNotify,
   onNavigateToSession,
@@ -68,6 +66,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
   >('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState<RegistrantItem | null>(null);
+  const [receiptObjectUrl, setReceiptObjectUrl] = useState<string | null>(null);
   const [selectedRegistrantIds, setSelectedRegistrantIds] = useState<string[]>([]);
 
   // Rejection reason modal state
@@ -100,6 +99,31 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedReceipt, rejectingItem, resubmittingItem, inspectingEligibility]);
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedReceipt) {
+      setReceiptObjectUrl(null);
+      return () => undefined;
+    }
+
+    registrationApi
+      .openReceipt(selectedReceipt.id)
+      .then((blob) => {
+        if (active) setReceiptObjectUrl(URL.createObjectURL(blob));
+      })
+      .catch((error: any) => {
+        if (active) onNotify(error?.message || 'Failed to open receipt.');
+      });
+
+    return () => {
+      active = false;
+      setReceiptObjectUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return null;
+      });
+    };
+  }, [selectedReceipt, onNotify]);
 
   const toggleSelectAll = (list: RegistrantItem[]) => {
     if (selectedRegistrantIds.length === list.length && list.length > 0) {
@@ -138,89 +162,43 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
             <span>Rejected</span>
           </span>
         );
+      case 'cancelled':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-inter font-medium bg-white/10 text-white/60 border border-white/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-white/50" />
+            <span>Cancelled</span>
+          </span>
+        );
     }
   };
 
-  const handleApprove = (registrant: RegistrantItem) => {
+  const handleApprove = async (registrant: RegistrantItem) => {
     if (!canReview) return;
-    const updated = registrants.map((r) => {
-      if (r.id === registrant.id) {
-        return {
-          ...r,
-          status: 'approved' as PaymentStatus,
-          lifecycleStatus: 'CONFIRMED' as const,
-          receiptRejectedReason: undefined,
-        };
-      }
-      return r;
-    });
-
-    onUpdateRegistrants(updated);
-
-    // Persistent participant notification
-    notificationService.addNotification({
-      recipientEmail: registrant.email || registrant.primaryEmail,
-      type: 'payment_approved',
-      title: 'Payment Fee Approved',
-      message: `Your registration fee payment of PKR ${registrant.amount} for "${registrant.sessionTitle}" was verified and approved. Registration confirmed!`,
-      linkTab: 'registrants',
-      entityId: `pay-approved-${registrant.id}`,
-    });
-
-    auditService.log({
-      action: 'PAYMENT_APPROVED',
-      actor: currentRole === 'super_admin' ? 'Super Admin' : 'Admin',
-      actorRole: currentRole.toUpperCase(),
-      target: `${registrant.name} (${registrant.sessionTitle})`,
-      details: `Approved fee slip of PKR ${registrant.amount}.`,
-      result: 'SUCCESS',
-    });
-    onNotify(`Approved payment for ${registrant.name}. Registration confirmed.`);
+    try {
+      await registrationApi.approve(registrant.id);
+      await onReloadRegistrants?.();
+      onNotify(`Approved payment for ${registrant.name}. Registration confirmed.`);
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to approve payment.');
+    }
   };
 
-  const handleConfirmReject = () => {
+  const handleConfirmReject = async () => {
     if (!rejectingItem) return;
-    if (!rejectionReason.trim()) {
+    const reason = rejectionReason.trim();
+    if (reason.length < 3 || reason.length > 300) {
       onNotify('Rejection reason is required.');
       return;
     }
-
-    const updated = registrants.map((r) => {
-      if (r.id === rejectingItem.id) {
-        return {
-          ...r,
-          status: 'rejected' as PaymentStatus,
-          lifecycleStatus: 'PAYMENT_REJECTED' as any,
-          receiptRejectedReason: rejectionReason.trim(),
-        };
-      }
-      return r;
-    });
-
-    onUpdateRegistrants(updated);
-
-    // Persistent participant rejection feedback notification
-    notificationService.addNotification({
-      recipientEmail: rejectingItem.email || rejectingItem.primaryEmail,
-      type: 'payment_rejected',
-      title: 'Payment Verification Required',
-      message: `Your payment slip for "${rejectingItem.sessionTitle}" was not approved. Reason: ${rejectionReason.trim()}. Please resubmit a valid receipt slip.`,
-      linkTab: 'registrants',
-      entityId: `pay-rejected-${rejectingItem.id}-${Date.now()}`,
-    });
-
-    auditService.log({
-      action: 'PAYMENT_REJECTED',
-      actor: currentRole === 'super_admin' ? 'Super Admin' : 'Admin',
-      actorRole: currentRole.toUpperCase(),
-      target: `${rejectingItem.name} (${rejectingItem.sessionTitle})`,
-      details: `Rejected with reason: "${rejectionReason.trim()}". Resubmission permitted.`,
-      result: 'REJECTED',
-    });
-
-    onNotify(`Payment for ${rejectingItem.name} rejected with specified feedback.`);
-    setRejectingItem(null);
-    setRejectionReason('');
+    try {
+      await registrationApi.reject(rejectingItem.id, reason);
+      await onReloadRegistrants?.();
+      onNotify(`Payment for ${rejectingItem.name} rejected with specified feedback.`);
+      setRejectingItem(null);
+      setRejectionReason('');
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to reject payment.');
+    }
   };
 
   const handleConfirmResubmission = async () => {
@@ -233,52 +211,24 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
     }
 
     try {
-      // Compress client-side to lightweight, permanent base64 data URL
-      const compressed = await storageService.compressImage(replacementFile);
-      
-      // Save permanently in IndexedDB
-      await storageService.saveFile({
-        key: `receipt_${resubmittingItem.id}`,
-        dataUrl: compressed.dataUrl,
-        fileName: replacementFile.name,
-        fileSize: compressed.compressedSize,
-        mimeType: compressed.mimeType,
-        createdAt: Date.now(),
-      });
-
-      const updated = registrants.map((r) => {
-        if (r.id === resubmittingItem.id) {
-          return {
-            ...r,
-            status: 'pending' as PaymentStatus,
-            lifecycleStatus: 'PAYMENT_PENDING' as any,
-            receiptFileName: replacementFile.name,
-            receiptFileSize: `${Math.round(compressed.compressedSize / 1024)} KB`,
-            receiptPreviewUrl: compressed.dataUrl,
-            receiptRejectedReason: undefined,
-          };
-        }
-        return r;
-      });
-
-      onUpdateRegistrants(updated);
-
-      // Persistent admin review alert
-      notificationService.addNotification({
-        recipientRole: 'admin',
-        type: 'payment_pending',
-        title: 'Replacement Fee Slip Resubmitted',
-        message: `${resubmittingItem.name} resubmitted a replacement receipt slip for "${resubmittingItem.sessionTitle}".`,
-        linkTab: 'registrants',
-        entityId: `admin-resubmit-${resubmittingItem.id}-${Date.now()}`,
-      });
-      onNotify(`Replacement receipt submitted for review (${Math.round(compressed.compressedSize / 1024)} KB offline-cached).`);
-    } catch (err) {
-      console.warn('Error compressing resubmitted receipt:', err);
-      onNotify('Failed to process receipt image. Please try again.');
+      await registrationApi.uploadReceipt(resubmittingItem.id, replacementFile);
+      await onReloadRegistrants?.();
+      onNotify('Replacement receipt submitted for review.');
+    } catch (err: any) {
+      onNotify(err?.message || 'Failed to upload replacement receipt.');
     } finally {
       setResubmittingItem(null);
       setReplacementFile(null);
+    }
+  };
+
+  const handleCancel = async (registrant: RegistrantItem) => {
+    try {
+      await registrationApi.cancel(registrant.id);
+      await onReloadRegistrants?.();
+      onNotify(`Registration for "${registrant.sessionTitle}" cancelled.`);
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to cancel registration.');
     }
   };
 
@@ -870,6 +820,15 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                       ) : (
                         /* Student & Guest View in My Registrations */
                         <div className="flex flex-col items-end gap-1.5">
+                          {reg.status !== 'cancelled' && (
+                            <button
+                              type="button"
+                              onClick={() => handleCancel(reg)}
+                              className="px-3 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-white/80 text-xs cursor-pointer"
+                            >
+                              Cancel Registration
+                            </button>
+                          )}
                           {isSessionClosed ? (
                             /* State 1: Session Completed */
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-inter font-medium bg-white/10 text-white/60 border border-white/20">
@@ -950,22 +909,11 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
             </div>
 
             <div className="rounded-xl overflow-hidden border border-white/[0.10] bg-black/40 max-h-[360px] flex items-center justify-center p-2">
-              {selectedReceipt.receiptPreviewUrl ? (
+              {receiptObjectUrl ? (
                 <img
-                  src={selectedReceipt.receiptPreviewUrl}
+                  src={receiptObjectUrl}
                   alt="Payment Receipt Slip"
                   className="max-h-[340px] w-auto object-contain rounded-lg"
-                  onError={(e) => {
-                    // If image fails, attempt loading from IndexedDB
-                    storageService.getFile(`receipt_${selectedReceipt.id}`).then((rec) => {
-                      if (rec?.dataUrl) {
-                        (e.target as HTMLImageElement).src = rec.dataUrl;
-                      } else {
-                        (e.target as HTMLImageElement).src =
-                          'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80';
-                      }
-                    });
-                  }}
                 />
               ) : (
                 <div className="p-8 text-center text-xs text-white/50">
@@ -979,13 +927,24 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
               <span className="text-[11px] font-mono text-[var(--text-sec-60)]">
                 Amount: PKR {selectedReceipt.amount}
               </span>
-              <button
-                type="button"
-                onClick={() => setSelectedReceipt(null)}
-                className="px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-xs text-white cursor-pointer"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                {receiptObjectUrl && (
+                  <button
+                    type="button"
+                    onClick={() => window.open(receiptObjectUrl, '_blank', 'noopener,noreferrer')}
+                    className="px-4 py-2 rounded-xl bg-[var(--primary-accent)] hover:brightness-110 text-xs text-white cursor-pointer"
+                  >
+                    Open Receipt
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedReceipt(null)}
+                  className="px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-xs text-white cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
