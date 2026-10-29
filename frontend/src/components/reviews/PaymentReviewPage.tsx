@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { getFeeStatus } from '../../utils/feeStatus';
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   ArrowLeft,
@@ -531,7 +532,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                       </div>
                     </div>
                     <span className="px-2.5 py-1 rounded-lg bg-white/[0.08] text-white font-mono text-xs font-semibold shrink-0">
-                      PKR {reg.amount || (session.isPaid ? session.amount : '0 (Free)')}
+                      {getFeeStatus(reg, !!isPaidSession).label}
                     </span>
                   </div>
 
@@ -746,7 +747,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                       <td className="py-3.5 px-4">
                         <div className="text-white font-medium">{reg.sessionTitle}</div>
                         <div className="text-[11px] text-amber-300 font-mono">
-                          PKR {reg.amount}
+                          {getFeeStatus(reg, !!isPaidSession).label}
                         </div>
                         {onNavigateToSession && (
                           <button
@@ -982,7 +983,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
 
             <div className="flex items-center justify-between pt-2 border-t border-white/[0.10]">
               <span className="text-[11px] font-mono text-[var(--text-sec-60)]">
-                Amount: PKR {selectedReceipt.amount}
+                Fee: {getFeeStatus(selectedReceipt, true).label}
               </span>
               <div className="flex items-center gap-2">
                 {receiptObjectUrl && (

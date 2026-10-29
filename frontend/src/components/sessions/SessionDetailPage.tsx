@@ -1,3 +1,4 @@
+import { getFeeStatus } from '../../utils/feeStatus';
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
@@ -98,9 +99,11 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
         r.sessionId === session.id &&
         (r.email === currentUserEmail ||
           r.primaryEmail === currentUserEmail ||
-          (currentUserEmail?.includes('jordan') && r.name.toLowerCase().includes('jordan')))
+          (currentUserEmail?.includes('jordan') && r.name.toLowerCase().includes('jordan')) ||
+          (currentRole !== 'admin' && currentRole !== 'super_admin' && registered))
     );
 
+  const feeStatus = getFeeStatus(effectiveRegistrant, !!session.isPaid);
   const capacityInfo = getSessionCapacity(session);
   const isSessionClosed = session.status === 'closed';
   const isPaidSession = !!session.isPaid;
@@ -645,14 +648,33 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                     <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     <span>1. Registration Confirmed</span>
                   </div>
-                  <div className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-emerald-200 flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>2. Fee {session.isPaid ? 'Approved' : 'Free Pass'}</span>
+                  <div
+                    className={`p-2 rounded-lg border flex items-center gap-1.5 ${
+                      feeStatus.approved
+                        ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                        : feeStatus.tone === 'danger'
+                        ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+                        : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                    }`}
+                  >
+                    {feeStatus.approved ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Clock className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                    <span>2. Fee: {feeStatus.label}</span>
                   </div>
-                  <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-200 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span>3. Attendance Logged</span>
-                  </div>
+                  {effectiveRegistrant?.attended ? (
+                    <div className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-emerald-200 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>3. Attendance Logged</span>
+                    </div>
+                  ) : (
+                    <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-200 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>3. Attendance Logged</span>
+                    </div>
+                  )}
                   <div className="p-2 rounded-lg bg-cyan-950/40 border border-cyan-500/40 text-cyan-200 flex items-center gap-1.5">
                     <CheckSquare className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                     <span>4. Task On Time</span>

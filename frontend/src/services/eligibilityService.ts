@@ -193,7 +193,9 @@ export const eligibilityService = {
         paymentMessage = `Payment slip rejected (${registrant.receiptRejectedReason || 'Resubmission required'}).`;
       } else {
         paymentApproved = false;
-        paymentMessage = 'Fee payment slip is awaiting manual review in verification queue.';
+        paymentMessage = registrant.receiptFileName
+          ? 'Fee payment slip is awaiting approval.'
+          : 'Payment required: upload your fee receipt.';
       }
     }
 
