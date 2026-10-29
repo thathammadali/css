@@ -480,7 +480,7 @@ export default function App() {
       isNewSignup
         ? `Account registered! Welcome, ${authUser.name}!`
         : `Signed in as ${authUser.name} (${identified.roleDisplayName})${
-            authUser.isBackendConnected ? ' [Live Backend]' : ' [Offline / Mock Mode]'
+            import.meta.env.DEV ? (authUser.isBackendConnected ? ' [Live Backend]' : ' [Offline / Mock Mode]') : ''
           }`
     );
 

@@ -148,7 +148,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         </div>
 
         {/* Offline / Mock Mode vs Live Backend Badge */}
-        {isLoggedIn && (
+        {import.meta.env.DEV && isLoggedIn && (
           <div className="hidden sm:flex items-center ml-1 sm:ml-3 shrink-0">
             {!isBackendConnected ? (
               <span
@@ -194,7 +194,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           </span>
         </button>
 
-        {/* Backend Tunnel & Origin Button */}
+        {import.meta.env.DEV && (
         <button
           type="button"
           onClick={() => setShowTunnelModal(true)}
@@ -208,6 +208,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
             Tunnel
           </span>
         </button>
+        )}
 
         {/* Quick Theme Switcher */}
         <div className="relative" ref={themeRef}>
@@ -474,10 +475,12 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
       </div>
     </header>
 
-    <BackendConnectionModal
-      isOpen={showTunnelModal}
-      onClose={() => setShowTunnelModal(false)}
-    />
+    {import.meta.env.DEV && (
+      <BackendConnectionModal
+        isOpen={showTunnelModal}
+        onClose={() => setShowTunnelModal(false)}
+      />
+    )}
   </>
   );
 };

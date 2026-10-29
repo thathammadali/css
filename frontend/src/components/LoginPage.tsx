@@ -190,7 +190,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         // Credentials successfully verified
         setSuccessMessage(
           authResult.isBackendConnected
-            ? 'Backend Tunnel verified! Signing in...'
+            ? (import.meta.env.DEV ? 'Backend Tunnel verified! Signing in...' : 'Signing in...')
             : 'Signed in via Offline / Mock Mode (local fallback)...'
         );
         setTimeout(() => {
@@ -253,7 +253,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         const createdAccount = regResult.user;
         setSuccessMessage(
           regResult.isBackendConnected
-            ? 'Account registered on Backend Tunnel! Redirecting to dashboard...'
+            ? (import.meta.env.DEV ? 'Account registered on Backend Tunnel! Redirecting to dashboard...' : 'Account registered! Redirecting to dashboard...')
             : 'Registered in Offline / Mock Mode! Redirecting to dashboard...'
         );
         setTimeout(() => {
@@ -325,7 +325,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   return (
     <div
       id="login-page-theme-container"
-      className="relative w-full min-h-[100dvh] flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 overflow-hidden bg-[var(--bg-start)] text-white transition-colors duration-500"
+      className="relative w-full min-h-[100dvh] md:h-[100dvh] flex flex-col items-center justify-center p-4 sm:p-6 md:py-4 lg:px-8 overflow-x-hidden md:overflow-hidden bg-[var(--bg-start)] text-white transition-colors duration-500"
     >
       {/* ========================================================
           DYNAMIC AMBIENT GLOWS & ORBS (Reflecting Active Theme)
@@ -352,7 +352,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       />
 
       {/* Top Bar: View Sessions, About, and Theme Switcher */}
-      <div className="w-full max-w-4xl mb-4 flex items-center justify-between z-20">
+      <div className="w-full max-w-4xl mb-3 flex items-center justify-between z-20">
         <div className="flex items-center gap-2.5">
           <button
             type="button"
@@ -376,6 +376,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             <span>About</span>
           </button>
 
+          {import.meta.env.DEV && (
+            <>
           <button
             type="button"
             onClick={() => setShowTunnelModal(true)}
@@ -406,6 +408,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <span>Offline / Mock Mode</span>
             </div>
           ) : null}
+            </>
+          )}
         </div>
 
         {/* Quick Theme Switcher on Login Page */}
@@ -516,7 +520,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           {/* ========================================================
               LEFT COLUMN: Welcome Back & Tagline
              ======================================================== */}
-          <div className="p-8 sm:p-12 lg:p-14 flex flex-col justify-center border-b md:border-b-0 md:border-r border-white/[0.16] relative bg-white/[0.03]">
+          <div className="p-6 sm:p-8 lg:p-10 flex flex-col justify-center border-b md:border-b-0 md:border-r border-white/[0.16] relative bg-white/[0.03]">
             <div className="space-y-5">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.10] border border-white/[0.20] text-[11px] font-inter text-[var(--primary-accent)] backdrop-blur-md shadow-sm">
                 <Sparkles className="w-3 h-3 text-[var(--primary-accent)]" />
@@ -529,11 +533,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 Back
               </h1>
 
-              {/* Tagline */}
-              <p className="font-inter font-normal text-sm sm:text-base text-[var(--text-sec-80)] tracking-wide leading-relaxed">
-                Session Management System
-              </p>
-
               <p className="font-inter text-xs text-white/60 leading-relaxed max-w-xs">
                 Log in to discover sessions, join live meetings, submit vouchers, and claim verified credentials.
               </p>
@@ -543,7 +542,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           {/* ========================================================
               RIGHT COLUMN: Underline Dividers, Minimal Fields & Sign In/Up
              ======================================================== */}
-          <div className="p-8 sm:p-12 flex flex-col justify-center bg-black/[0.12] backdrop-blur-xl">
+          <div className="p-6 sm:p-8 lg:p-10 flex flex-col justify-center bg-black/[0.12] backdrop-blur-xl">
             {/* Top Distinct Horizontal Lines and Header */}
             <div className="mb-6">
               <div className="w-full border-t border-white/[0.35]" />
@@ -589,13 +588,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               </div>
 
               <div className="w-full border-t border-white/[0.35]" />
-            </div>
-
-            {/* Prototype Badge */}
-            <div className="mb-4 flex items-center justify-center">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-mono tracking-tight">
-                Demo / Prototype Authentication — Real credential validation active
-              </span>
             </div>
 
             {/* If Sign Up: Account Type Selector */}
@@ -665,7 +657,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     onChange={(e) => handleInputChange('name', e.target.value)}
                     maxLength={100}
                     placeholder={accountType === 'student' ? 'e.g. Jordan Lee' : 'e.g. Dr. Sarah Connor'}
-                    className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                    className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
                   {errors.name && (
                     <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -694,7 +686,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       inputMode="numeric"
                       maxLength={15}
                       placeholder="e.g. 202442"
-                      className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                      className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                     />
                     {errors.rollNumber && (
                       <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -717,7 +709,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       value={department}
                       onChange={(e) => handleInputChange('department', e.target.value)}
                       placeholder="e.g. Software Engineering"
-                      className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                      className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                     />
                     {errors.department && (
                       <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -744,7 +736,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     value={affiliation}
                     onChange={(e) => handleInputChange('affiliation', e.target.value)}
                     placeholder="e.g. Autonomous Robotics Labs Inc. / External Guest"
-                    className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                    className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
                   {errors.affiliation && (
                     <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -788,7 +780,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         : 'e.g. sarah.connor@industrytech.io'
                       : 'e.g. student@university.edu.pk or your email'
                   }
-                  className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                  className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                 />
                 {errors.email && (
                   <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -824,7 +816,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     }}
                     maxLength={254}
                     placeholder="e.g. personal.recovery@gmail.com"
-                    className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                    className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
                   {errors.secondaryEmail && (
                     <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -863,7 +855,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     onChange={(e) => handleInputChange('password', e.target.value)}
                     minLength={8}
                     placeholder="••••••••"
-                    className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 pr-8 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                    className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-10 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
                   <button
                     type="button"
@@ -896,7 +888,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     value={confirmPassword}
                     onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                    className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
                   {errors.confirmPassword && (
                     <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -1042,10 +1034,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         </div>
       </div>
 
+      {import.meta.env.DEV && (
       <BackendConnectionModal
         isOpen={showTunnelModal}
         onClose={() => setShowTunnelModal(false)}
       />
+      )}
     </div>
   );
 };
