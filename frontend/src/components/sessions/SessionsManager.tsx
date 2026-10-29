@@ -351,6 +351,7 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
         onOpenRegistration={handleOpenRegistration}
         onEditSession={handleNavigateToEditSession}
         onUpdateSession={handleSaveSession}
+        onReloadRegistrants={onReloadRegistrants}
         onNotify={onNotify}
       />
     );

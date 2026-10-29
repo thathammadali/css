@@ -94,7 +94,6 @@ export const eligibilityService = {
       submissions?: TaskSubmission[];
     }
   ): EligibilityResult {
-    const attendanceRecords = context?.attendanceRecords || this.getAttendanceRecords();
     const taskSubmissions = context?.submissions || this.getTaskSubmissions();
 
     // Auto-resolve session if not explicitly provided
@@ -200,38 +199,12 @@ export const eligibilityService = {
 
     // -----------------------------------------------------------------------
     // CHECK 3: Attendance / Participation Requirement
-    // Strictly evaluated from authoritative AttendanceRecord registry
+    // Attendance is authoritative on the backend registration record.
     // -----------------------------------------------------------------------
-    let attendanceCompleted = false;
-    let attendanceMessage = '';
-
-    // Match authoritative attendance record
-    const attRecord = attendanceRecords.find((rec) => {
-      const matchSession = !session || rec.sessionId === session.id || rec.sessionId === registrant.sessionId;
-      const matchUser =
-        rec.participantId === registrant.id ||
-        (registrant.email && rec.participantEmail?.toLowerCase() === registrant.email.toLowerCase()) ||
-        (registrant.primaryEmail && rec.participantEmail?.toLowerCase() === registrant.primaryEmail.toLowerCase()) ||
-        (registrant.rollNumber && rec.rollNumber?.toLowerCase() === registrant.rollNumber.toLowerCase());
-      return matchSession && matchUser;
-    });
-
-    if (attRecord) {
-      const sessionMin = session?.minAttendanceMinutes;
-      const durationValid = sessionMin ? attRecord.durationMinutes >= sessionMin : true;
-
-      if (attRecord.thresholdMet && durationValid) {
-        attendanceCompleted = true;
-        attendanceMessage = `Required attendance completed (${attRecord.durationMinutes} mins logged; verified by ${attRecord.verifiedBy || 'Session Admin'}).`;
-      } else {
-        attendanceCompleted = false;
-        attendanceMessage = `Attendance threshold not satisfied (${attRecord.durationMinutes} mins logged; minimum session threshold required).`;
-      }
-    } else {
-      // No authoritative record exists - arbitrary frontend flags or client booleans do not grant attendance
-      attendanceCompleted = false;
-      attendanceMessage = 'No verified session attendance record logged in official attendance registry.';
-    }
+    const attendanceCompleted = registrant.attended === true;
+    const attendanceMessage = attendanceCompleted
+      ? 'Required attendance completed.'
+      : 'No verified session attendance record logged in official attendance registry.';
 
     // -----------------------------------------------------------------------
     // CHECK 4: Required Assignment Completed On Time

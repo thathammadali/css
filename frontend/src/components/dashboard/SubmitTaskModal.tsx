@@ -218,6 +218,7 @@ export const SubmitTaskModal: React.FC<SubmitTaskModalProps> = ({
               <input
                 id="task-sub-file"
                 type="file"
+                accept=".pdf,.zip,.png,.jpg,.jpeg"
                 onChange={(e) => {
                   if (e.target.files?.[0]) setAttachedFile(e.target.files[0]);
                 }}

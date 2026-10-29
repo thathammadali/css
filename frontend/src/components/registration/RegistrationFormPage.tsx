@@ -26,6 +26,21 @@ import {
 import { getSessionCapacity } from '../../utils/capacityHelper';
 import { storageService } from '../../services/storageService';
 import { registrationApi } from '../../services/registrationApi';
+import { authApi } from '../../services/apiClient';
+import {
+  INVALID_EMAIL_MESSAGE,
+  INVALID_NAME_MESSAGE,
+  INVALID_PHONE_MESSAGE,
+  INVALID_RECEIPT_TYPE_MESSAGE,
+  isValidEmail,
+  isValidName,
+  isValidPhone,
+  isValidRollNumber,
+  normalizePhone,
+  validateReceiptFile,
+  phoneChars,
+  digitsOnly,
+} from '../../utils/validators';
 
 interface RegistrationFormPageProps {
   session?: SessionItem | null;
@@ -57,6 +72,14 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
   const [guestSecondaryEmail, setGuestSecondaryEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
   const [guestInstitution, setGuestInstitution] = useState('');
+  const [institution, setInstitution] = useState(() => {
+    try {
+      const raw = localStorage.getItem('sems_active_session');
+      return raw ? String(JSON.parse(raw)?.institution ?? '') : '';
+    } catch {
+      return '';
+    }
+  });
 
   // Submission loading & error state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -105,6 +128,8 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
     mimeType?: string;
   } | null>(null);
   const [receiptUploadFile, setReceiptUploadFile] = useState<File | null>(null);
+  const [registeredItem, setRegisteredItem] = useState<RegistrantItem | null>(null);
+  const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
 
   const [isCompressing, setIsCompressing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -119,19 +144,10 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
   };
 
   const handleFileSelection = async (file: File) => {
-    const maxBytes = 5 * 1024 * 1024; // 5 MB per specification
-    if (file.size > maxBytes) {
-      setErrors((prev) => ({ ...prev, receipt: 'Receipt file exceeds 5 MB maximum allowed size.' }));
-      onNotify('File too large: Maximum 5 MB per receipt upload.');
-      return;
-    }
-
-    const validExtensions = ['jpg', 'jpeg', 'png', 'pdf'];
-    const ext = file.name.split('.').pop()?.toLowerCase() || '';
-
-    if (!validExtensions.includes(ext)) {
-      setErrors((prev) => ({ ...prev, receipt: 'Invalid format. Allowed: PDF, JPG, JPEG, PNG.' }));
-      onNotify('Invalid file type: Please upload a JPG, PNG, or PDF slip.');
+    const fileError = validateReceiptFile(file);
+    if (fileError) {
+      setErrors((prev) => ({ ...prev, receipt: fileError }));
+      onNotify(fileError);
       return;
     }
 
@@ -189,19 +205,21 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
     const newErrors: Record<string, string> = {};
 
     if (isGuest) {
-      if (!guestName.trim()) newErrors.guestName = 'Full name is mandatory.';
-      if (!guestEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) {
-        newErrors.guestEmail = 'Valid primary contact email is mandatory.';
+      if (!isValidName(guestName)) newErrors.guestName = INVALID_NAME_MESSAGE;
+      if (!isValidEmail(guestEmail)) {
+        newErrors.guestEmail = INVALID_EMAIL_MESSAGE;
       }
       if (guestSecondaryEmail.trim()) {
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestSecondaryEmail.trim())) {
+        if (!isValidEmail(guestSecondaryEmail)) {
           newErrors.guestSecondaryEmail = 'Please enter a valid secondary email address.';
         } else if (guestSecondaryEmail.trim().toLowerCase() === guestEmail.trim().toLowerCase()) {
           newErrors.guestSecondaryEmail = 'Secondary email must differ from primary email.';
         }
       }
-      if (!guestPhone.trim()) newErrors.guestPhone = 'Phone number is mandatory.';
+      if (!isValidPhone(guestPhone)) newErrors.guestPhone = INVALID_PHONE_MESSAGE;
       if (!guestInstitution.trim()) newErrors.guestInstitution = 'Institutional affiliation is mandatory.';
+    } else if (institution.trim().length > 150) {
+      newErrors.institution = 'Institution must be 150 characters or fewer.';
     }
 
     formConfig.fields.forEach((field) => {
@@ -210,6 +228,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
         return;
       }
       const val = formValues[field.id]?.trim() || '';
+      if (field.type === 'file') return;
       if (field.required && !val) {
         newErrors[field.id] = `${field.label} is required.`;
         return;
@@ -220,6 +239,12 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
         if (v.minLength && val.length < v.minLength) {
           newErrors[field.id] = `${field.label} must be at least ${v.minLength} characters.`;
           return;
+        }
+        if (field.id === 'f-name' && val && !isValidName(val)) newErrors[field.id] = INVALID_NAME_MESSAGE;
+        if (field.id === 'f-email' && val && !isValidEmail(val)) newErrors[field.id] = INVALID_EMAIL_MESSAGE;
+        if (field.id === 'f-phone' && val && !isValidPhone(val)) newErrors[field.id] = INVALID_PHONE_MESSAGE;
+        if (field.id === 'f-roll' && val && !isValidRollNumber(val)) {
+          newErrors[field.id] = 'Roll number must be 3 to 15 digits, for example 24004376045.';
         }
         if (v.maxLength && val.length > v.maxLength) {
           newErrors[field.id] = `${field.label} cannot exceed ${v.maxLength} characters.`;
@@ -254,10 +279,6 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
       }
     });
 
-    if (!isWaitlistMode && session?.isPaid && !receiptFile) {
-      newErrors.receipt = 'Please upload your payment receipt before submitting.';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -281,15 +302,21 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
         throw new Error('Session is unavailable.');
       }
 
-      let registration = await registrationApi.register(session.id);
-      if (session.isPaid && receiptUploadFile) {
-        registration = await registrationApi.uploadReceipt(registration.id, receiptUploadFile);
+      if (!isGuest) {
+        await authApi.updateProfile({
+          phone: normalizePhone(formValues['f-phone'] || ''),
+          rollNumber: formValues['f-roll']?.trim() || '',
+          department: formValues['f-dept']?.trim() || '',
+          institution: institution.trim(),
+        });
       }
+      const registration = await registrationApi.register(session.id);
+      setRegisteredItem(registration);
       await onSubmitSuccess(registration);
       onNotify(
-        session.isPaid
-          ? 'Registration submitted. Your payment is pending admin review.'
-          : 'Registration confirmed! Admission seat successfully reserved.'
+        registration.backendStatus === 'CONFIRMED'
+          ? 'You are registered. Your seat is confirmed.'
+          : 'Registered. Upload your payment receipt. Your seat is confirmed only after an admin approves it.'
       );
       // Success achieved: now transition to confirmed screen
       setStep('confirmed');
@@ -299,6 +326,33 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
       onNotify('Submission failed: ' + (err?.message || 'Please retry.'));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleUploadReceipt = async () => {
+    if (!registeredItem || !receiptUploadFile) return;
+    const fileError = validateReceiptFile(receiptUploadFile);
+    if (fileError) {
+      setErrors((prev) => ({ ...prev, receipt: fileError }));
+      onNotify(fileError);
+      return;
+    }
+    setIsUploadingReceipt(true);
+    try {
+      const updated = await registrationApi.uploadReceipt(registeredItem.id, receiptUploadFile);
+      setRegisteredItem(updated);
+      setReceiptUploadFile(null);
+      setReceiptFile(null);
+      onNotify(
+        updated.backendStatus === 'PAYMENT_PENDING'
+          ? 'Receipt uploaded. Your seat is confirmed only after an admin approves it.'
+          : 'Receipt uploaded.'
+      );
+      await onSubmitSuccess(updated);
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to upload receipt.');
+    } finally {
+      setIsUploadingReceipt(false);
     }
   };
 
@@ -366,17 +420,40 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
               {isWaitlistMode
                 ? `You have been placed on the Priority Waitlist for "${session?.title}" at Queue Position #${capacityInfo.waitlistCount + 1}. If an enrolled attendee withdraws or their payment fails verification, you will receive an instant notification to confirm your seat.`
                 : `Your registration for "${session?.title}" has been recorded under Schema V${formConfig.version || 1}.${
-                    session?.isPaid
-                      ? ' Your payment slip is pending review by Admins. Once approved, your seat will be confirmed.'
-                      : ' Your seat is confirmed. Check your email for session details.'
+                    registeredItem?.backendStatus === 'PAYMENT_PENDING'
+                      ? ' Registered. Upload your payment receipt. Your seat is confirmed only after an admin approves it.'
+                      : ' You are registered. Your seat is confirmed.'
                   }`}
             </p>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.06] border border-white/[0.12] text-[11px] font-mono text-white/60">
-              <span>💾 Local Record</span>
+              <span>Backend registration status: {registeredItem?.backendStatus || 'UNKNOWN'}</span>
               <span>•</span>
-              <span>Slip safely cached in IndexedDB</span>
+              <span>No local registration record</span>
             </div>
           </div>
+          {session?.isPaid && registeredItem?.backendStatus === 'PAYMENT_PENDING' && (
+            <div className="space-y-2 text-left border-t border-white/[0.1] pt-4">
+              <label className="block text-xs font-medium text-white">Upload payment receipt</label>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleFileSelection(file);
+                }}
+                className="block w-full text-xs text-white/70"
+              />
+              {errors.receipt && <p className="text-[11px] text-rose-300">{errors.receipt}</p>}
+              <button
+                type="button"
+                disabled={!receiptUploadFile || isUploadingReceipt}
+                onClick={handleUploadReceipt}
+                className="px-4 py-2 rounded-xl bg-[var(--primary-accent)] text-xs text-white disabled:opacity-50"
+              >
+                {isUploadingReceipt ? 'Uploading...' : 'Upload receipt'}
+              </button>
+            </div>
+          )}
           <div className="pt-2">
             <button
               type="button"
@@ -553,7 +630,22 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
                     <input
                       type="email"
                       value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setGuestEmail(value);
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          if (value.trim() && !isValidEmail(value)) next.guestEmail = INVALID_EMAIL_MESSAGE;
+                          else delete next.guestEmail;
+                          return next;
+                        });
+                      }}
+                      onBlur={() => {
+                        if (!isValidEmail(guestEmail)) {
+                          setErrors((prev) => ({ ...prev, guestEmail: INVALID_EMAIL_MESSAGE }));
+                        }
+                      }}
+                      maxLength={254}
                       placeholder="guest@organization.com"
                       className={`w-full h-10 px-3 rounded-xl bg-white/[0.06] border text-white focus:outline-none ${
                         errors.guestEmail ? 'border-rose-400' : 'border-white/[0.15]'
@@ -569,7 +661,21 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
                     <input
                       type="email"
                       value={guestSecondaryEmail}
-                      onChange={(e) => setGuestSecondaryEmail(e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setGuestSecondaryEmail(value);
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          if (value.trim() && !isValidEmail(value)) next.guestSecondaryEmail = INVALID_EMAIL_MESSAGE;
+                          else delete next.guestSecondaryEmail;
+                          return next;
+                        });
+                      }}
+                      onBlur={() => {
+                        if (guestSecondaryEmail.trim() && !isValidEmail(guestSecondaryEmail)) {
+                          setErrors((prev) => ({ ...prev, guestSecondaryEmail: INVALID_EMAIL_MESSAGE }));
+                        }
+                      }}
                       placeholder="e.g. personal.backup@gmail.com"
                       className={`w-full h-10 px-3 rounded-xl bg-white/[0.06] border text-white focus:outline-none ${
                         errors.guestSecondaryEmail ? 'border-rose-400' : 'border-white/[0.15]'
@@ -589,8 +695,10 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
                     <input
                       type="tel"
                       value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
-                      placeholder="+92 300 1234567"
+                      onChange={(e) => setGuestPhone(phoneChars(e.target.value))}
+                      maxLength={11}
+                      inputMode="numeric"
+                      placeholder="03001234567"
                       className={`w-full h-10 px-3 rounded-xl bg-white/[0.06] border text-white focus:outline-none ${
                         errors.guestPhone ? 'border-rose-400' : 'border-white/[0.15]'
                       }`}
@@ -618,6 +726,22 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
             )}
 
             {/* Dynamic Form Questions */}
+            {!isGuest && (
+              <div className="space-y-1.5 text-xs">
+                <label className="block font-inter font-medium text-white">
+                  Institution
+                </label>
+                <input
+                  type="text"
+                  value={institution}
+                  onChange={(event) => setInstitution(event.target.value)}
+                  maxLength={150}
+                  autoComplete="organization"
+                  className="w-full h-10 px-3 rounded-xl bg-white/[0.06] border border-white/[0.15] text-white focus:outline-none focus:border-[var(--primary-accent)]"
+                />
+              </div>
+            )}
+
             <div className="space-y-4">
               <span className="font-poppins text-xs font-semibold uppercase tracking-wider text-[var(--primary-accent)] block">
                 Session Questionnaire
@@ -625,7 +749,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
 
               {formConfig.fields.map((field) => {
                 // If guest already filled top fields, skip redundant duplicates
-                if (isGuest && (field.id === 'f-name' || field.id === 'f-email' || field.id === 'f-phone')) {
+                if (field.type === 'file' || (isGuest && (field.id === 'f-name' || field.id === 'f-email' || field.id === 'f-phone'))) {
                   return null;
                 }
 
@@ -646,7 +770,31 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
                       <textarea
                         rows={3}
                         value={formValues[field.id] || ''}
-                        onChange={(e) => setFormValues({ ...formValues, [field.id]: e.target.value })}
+                        onChange={(e) => {
+                          const value =
+                            field.id === 'f-phone'
+                              ? phoneChars(e.target.value)
+                              : field.id === 'f-roll'
+                              ? digitsOnly(e.target.value)
+                              : e.target.value;
+                          setFormValues({ ...formValues, [field.id]: value });
+                          if (field.type === 'email') {
+                            setErrors((prev) => {
+                              const next = { ...prev };
+                              if (value.trim() && !isValidEmail(value)) next[field.id] = INVALID_EMAIL_MESSAGE;
+                              else delete next[field.id];
+                              return next;
+                            });
+                          }
+                        }}
+                        onBlur={() => {
+                          const value = (formValues[field.id] || '').trim();
+                          if (field.type === 'email' && value && !isValidEmail(value)) {
+                            setErrors((prev) => ({ ...prev, [field.id]: INVALID_EMAIL_MESSAGE }));
+                          }
+                        }}
+                        inputMode={field.id === 'f-phone' ? 'tel' : field.id === 'f-roll' ? 'numeric' : undefined}
+                        readOnly={!isGuest && (field.id === 'f-name' || field.id === 'f-email')}
                         placeholder={field.placeholder}
                         maxLength={field.validation?.maxLength}
                         className={`w-full p-3 rounded-xl bg-white/[0.06] border text-white focus:outline-none focus:border-[var(--primary-accent)] resize-none ${
@@ -671,7 +819,17 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
                       <input
                         type={field.type === 'number' ? 'number' : field.type === 'email' ? 'email' : 'text'}
                         value={formValues[field.id] || ''}
-                        onChange={(e) => setFormValues({ ...formValues, [field.id]: e.target.value })}
+                        onChange={(e) => {
+                          const value =
+                            field.id === 'f-phone'
+                              ? phoneChars(e.target.value)
+                              : field.id === 'f-roll'
+                              ? digitsOnly(e.target.value)
+                              : e.target.value;
+                          setFormValues({ ...formValues, [field.id]: value });
+                        }}
+                        inputMode={field.id === 'f-phone' ? 'tel' : field.id === 'f-roll' ? 'numeric' : undefined}
+                        readOnly={!isGuest && (field.id === 'f-name' || field.id === 'f-email')}
                         placeholder={field.placeholder}
                         maxLength={field.validation?.maxLength}
                         className={`w-full h-10 px-3 rounded-xl bg-white/[0.06] border text-white focus:outline-none ${
@@ -688,91 +846,6 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
               })}
             </div>
 
-            {/* Manual Payment Receipt Upload (Strict 5 MB Constraint) */}
-            {session?.isPaid && (
-              <div className="space-y-3 pt-3 border-t border-white/[0.10]">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Receipt className="w-4 h-4 text-amber-300" />
-                    <span className="font-poppins text-xs font-semibold text-white">
-                      Payment Verification Slip <span className="text-rose-400">*</span>
-                    </span>
-                  </div>
-                  <span className="text-[11px] font-mono text-[var(--text-sec-60)]">
-                    Max 5 MB • PDF, JPG, PNG
-                  </span>
-                </div>
-
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setIsDragging(false);
-                    if (e.dataTransfer.files?.[0]) handleFileSelection(e.dataTransfer.files[0]);
-                  }}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`p-6 rounded-2xl border-2 border-dashed text-center cursor-pointer transition-colors ${
-                    isDragging
-                      ? 'border-[var(--primary-accent)] bg-[var(--accent-15)]'
-                      : errors.receipt
-                      ? 'border-rose-500/50 bg-rose-950/20'
-                      : 'border-white/[0.15] bg-white/[0.03] hover:border-white/[0.30]'
-                  }`}
-                >
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) handleFileSelection(e.target.files[0]);
-                    }}
-                    className="hidden"
-                  />
-
-                  {isCompressing ? (
-                    <div className="flex flex-col items-center justify-center py-2 space-y-2">
-                      <div className="w-6 h-6 border-2 border-[var(--primary-accent)] border-t-transparent rounded-full animate-spin" />
-                      <p className="text-xs text-white font-medium">Optimizing receipt image client-side...</p>
-                      <p className="text-[11px] text-[var(--primary-accent)]">Compressing to lightweight offline format</p>
-                    </div>
-                  ) : receiptFile ? (
-                    <div className="flex items-center justify-center gap-3">
-                      <FileCheck className="w-6 h-6 text-emerald-400 shrink-0" />
-                      <div className="text-left text-xs font-inter">
-                        <span className="text-white font-medium block truncate max-w-[200px] sm:max-w-xs">
-                          {receiptFile.name}
-                        </span>
-                        <span className="text-emerald-400 text-[11px] block font-mono">
-                          {receiptFile.size} • Offline Cached
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setReceiptFile(null);
-                        }}
-                        className="p-1 rounded-lg text-rose-400 hover:bg-rose-950/40 ml-2"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <UploadCloud className="w-7 h-7 text-[var(--primary-accent)] mx-auto mb-1" />
-                      <p className="text-xs text-white font-medium">Click to upload transfer slip or drag & drop</p>
-                      <p className="text-[11px] text-[var(--text-sec-60)]">Bank deposit, EasyPaisa, or JazzCash receipt</p>
-                    </div>
-                  )}
-                </div>
-                {errors.receipt && <p className="text-[11px] text-rose-300 font-inter">{errors.receipt}</p>}
-              </div>
-            )}
-
             {/* Next Step Button */}
             <div className="flex items-center justify-between pt-4 border-t border-white/[0.10]">
               <button
@@ -784,7 +857,8 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-[var(--primary-accent)] hover:brightness-110 text-xs font-semibold text-white shadow-lg cursor-pointer flex items-center gap-2"
+                disabled={isSubmitting || Object.values(errors).some(Boolean)}
+                className="px-6 py-2.5 rounded-xl bg-[var(--primary-accent)] hover:brightness-110 text-xs font-semibold text-white shadow-lg cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span>Continue to Review</span>
                 <span>→</span>

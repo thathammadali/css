@@ -13,10 +13,7 @@ import {
   LogOut,
   GraduationCap,
   Building2,
-  Save,
   ShieldCheck,
-  CheckCircle2,
-  AlertCircle,
   User,
   KeyRound,
   HardDrive,
@@ -51,7 +48,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   onBack,
   onSelectRole,
   onOpenAuthModal,
-  onUpdateUser,
   onLogout,
   onNotify,
 }) => {
@@ -97,8 +93,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const [fullNameInput, setFullNameInput] = useState(user?.name || '');
   const [rollNumberInput, setRollNumberInput] = useState(user?.rollNumber || '');
   const [departmentInput, setDepartmentInput] = useState(user?.department || '');
-  const [isSavedRecently, setIsSavedRecently] = useState(false);
-  const [emailErrors, setEmailErrors] = useState<{ primary?: string; secondary?: string }>({});
 
   // IndexedDB Storage & Demo Reset State
   const [storageStats, setStorageStats] = useState<{ fileCount: number; totalEstimatedBytes: number }>({
@@ -162,52 +156,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   );
 
   const initials = getInitials(profileName);
-
-  const handleSaveEmails = (e: React.FormEvent) => {
-    e.preventDefault();
-    const errors: { primary?: string; secondary?: string } = {};
-
-    if (!primaryEmailInput.trim()) {
-      errors.primary = 'Primary university email is required.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(primaryEmailInput.trim())) {
-      errors.primary = 'Please enter a valid primary email address.';
-    }
-
-    if (!secondaryEmailInput.trim()) {
-      errors.secondary = 'Secondary personal email is required for graduation recovery.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(secondaryEmailInput.trim())) {
-      errors.secondary = 'Please enter a valid secondary personal email address.';
-    } else if (secondaryEmailInput.trim().toLowerCase() === primaryEmailInput.trim().toLowerCase()) {
-      errors.secondary = 'Secondary email must be different from university email (use personal e.g. Gmail/Outlook).';
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setEmailErrors(errors);
-      onNotify('Please correct the email address formatting.');
-      return;
-    }
-
-    setEmailErrors({});
-
-    const updatedUser: AuthUser = {
-      name: fullNameInput.trim() || profileName,
-      email: primaryEmailInput.trim(),
-      primaryEmail: primaryEmailInput.trim(),
-      secondaryEmail: secondaryEmailInput.trim(),
-      role: user?.role || currentRole,
-      isLoggedIn: true,
-      rollNumber: rollNumberInput.trim(),
-      department: departmentInput.trim(),
-    };
-
-    if (onUpdateUser) {
-      onUpdateUser(updatedUser);
-    }
-
-    setIsSavedRecently(true);
-    setTimeout(() => setIsSavedRecently(false), 3000);
-    onNotify('Dual emails updated: Permanent graduation certificate protection active!');
-  };
 
   const handleSwatchClick = (theme: ThemeSwatch) => {
     if (!theme.unlocked) {
@@ -376,7 +324,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         </div>
 
         {/* Dual Email Configuration Form */}
-        <form onSubmit={handleSaveEmails} noValidate className="space-y-5">
+        <form className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* 1. PRIMARY UNIVERSITY EMAIL */}
             <div className="space-y-2 p-4 rounded-xl bg-white/[0.03] border border-white/[0.08]">
@@ -397,26 +345,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 id="profile-primary-email"
                 type="email"
                 value={primaryEmailInput}
-                onChange={(e) => {
-                  setPrimaryEmailInput(e.target.value);
-                  if (emailErrors.primary) setEmailErrors((prev) => ({ ...prev, primary: undefined }));
-                }}
+                readOnly
+                aria-readonly="true"
                 placeholder="student@university.edu.pk"
-                className={`w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border text-white font-inter text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary-accent)] ${
-                  emailErrors.primary ? 'border-rose-400 bg-rose-950/20' : 'border-white/[0.14]'
-                }`}
+                className="w-full h-11 px-3.5 rounded-xl bg-white/[0.03] border border-white/[0.10] text-white/60 font-inter text-sm cursor-not-allowed"
               />
-
-              {emailErrors.primary ? (
-                <p className="text-[11px] font-inter text-rose-300 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  <span>{emailErrors.primary}</span>
-                </p>
-              ) : (
-                <p className="text-[11px] font-inter text-[var(--text-sec-70)]">
-                  Used for active semester enrollment, society elections, and internal campus verifications.
-                </p>
-              )}
             </div>
 
             {/* 2. SECONDARY PERSONAL EMAIL (PERMANENT) */}
@@ -437,29 +370,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               <input
                 id="profile-secondary-email"
                 type="email"
-                value={secondaryEmailInput}
-                onChange={(e) => {
-                  setSecondaryEmailInput(e.target.value);
-                  if (emailErrors.secondary) setEmailErrors((prev) => ({ ...prev, secondary: undefined }));
-                }}
+                value={secondaryEmailInput || 'Not provided'}
+                readOnly
+                aria-readonly="true"
                 placeholder="your.name@gmail.com"
-                className={`w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border text-white font-inter text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary-accent)] ${
-                  emailErrors.secondary ? 'border-rose-400 bg-rose-950/20' : 'border-white/[0.14]'
-                }`}
+                className="w-full h-11 px-3.5 rounded-xl bg-white/[0.03] border border-white/[0.10] text-white/60 font-inter text-sm cursor-not-allowed"
               />
-
-              {emailErrors.secondary ? (
-                <p className="text-[11px] font-inter text-rose-300 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  <span>{emailErrors.secondary}</span>
-                </p>
-              ) : (
-                <p className="text-[11px] font-inter text-[var(--text-sec-70)]">
-                  Personal address (Gmail / Outlook). Retains lifetime access to credentials even if uni email closes.
-                </p>
-              )}
             </div>
           </div>
+
+          <p className="text-[11px] font-inter text-[var(--text-sec-70)]">
+            Your email addresses are linked to your account and cannot be changed here.
+          </p>
 
           {/* Academic Details row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
@@ -508,22 +430,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               <span>You can sign in using either email at any time.</span>
             </span>
 
-            <button
-              type="submit"
-              className="px-5 py-2.5 rounded-xl bg-[var(--primary-accent)] hover:brightness-110 active:scale-[0.99] text-white font-inter font-medium text-xs sm:text-[13px] transition-all flex items-center gap-2 cursor-pointer shadow-lg"
-            >
-              {isSavedRecently ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                  <span>Emails Saved!</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>Save Email Credentials</span>
-                </>
-              )}
-            </button>
           </div>
         </form>
       </div>

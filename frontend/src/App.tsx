@@ -34,7 +34,6 @@ import {
   CertificateItem,
   RegistrationFormConfig,
 } from './types';
-import { INITIAL_CERTIFICATES } from './data/mockCertificates';
 import { DEFAULT_REGISTRATION_FORM } from './data/mockForms';
 import { getRoleDisplayName, identifyRoleFromEmail } from './utils/roleUtils';
 import { DEMO_MODE } from './config';
@@ -45,7 +44,6 @@ import { apiFetch, eventsApi, getStoredAuthToken, setStoredAuthToken } from './s
 import { registrationApi } from './services/registrationApi';
 
 const STORAGE_LOGIN_KEY = 'sems_is_logged_in';
-const STORAGE_CERTIFICATES_KEY = 'sems_certificates';
 const STORAGE_ACTIVE_SESSION_KEY = 'sems_active_session';
 const STORAGE_ACTIVE_TAB_KEY = 'sems_active_tab';
 const STORAGE_ACTIVE_SCREEN_KEY = 'sems_active_screen';
@@ -140,19 +138,7 @@ export default function App() {
 
   const [registrants, setRegistrants] = useState<RegistrantItem[]>([]);
 
-  // Shared certificates state with localStorage persistence
-  const [certificates, setCertificates] = useState<CertificateItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_CERTIFICATES_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed to load certificates from localStorage', e);
-    }
-    return DEMO_MODE ? INITIAL_CERTIFICATES : [];
-  });
+  const [certificates, setCertificates] = useState<CertificateItem[]>([]);
 
   // Dynamic Registration Form Configuration configured by Head/Admin (Preserved across versions)
   const [formConfig, setFormConfig] = useState<RegistrationFormConfig>(() => formService.getActiveForm());
@@ -188,14 +174,6 @@ export default function App() {
     return () => window.removeEventListener('focus', onFocus);
   }, [reloadRegistrants]);
 
-  // Auto-sync certificates to localStorage whenever updated
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify(certificates));
-    } catch (e) {
-      console.warn('Failed to save certificates to localStorage', e);
-    }
-  }, [certificates]);
 
   // Map navigation tabs to hash routes
   const tabToHash = (tab: NavTab): string => {

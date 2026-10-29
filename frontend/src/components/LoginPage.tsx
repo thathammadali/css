@@ -17,6 +17,14 @@ import { BackendConnectionModal } from './BackendConnectionModal';
 import { useTheme } from '../context/ThemeContext';
 import { THEME_SWATCHES, THEME_STORAGE_KEY, applyThemeToDocument } from '../data/themes';
 import { DEMO_MODE } from '../config';
+import {
+  INVALID_EMAIL_MESSAGE,
+  INVALID_NAME_MESSAGE,
+  INVALID_ROLL_NUMBER_MESSAGE,
+  isValidEmail,
+  isValidName,
+  isValidRollNumber,
+} from '../utils/validators';
 
 interface LoginPageProps {
   onSuccessLogin: (
@@ -97,18 +105,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
     if (authMode === 'signup') {
       const trimmedName = name.trim();
-      if (!trimmedName) {
-        newErrors.name = 'Full name is required.';
-      } else if (trimmedName.length < 2) {
-        newErrors.name = 'Please enter your full legal name.';
-      }
+      if (!isValidName(trimmedName)) newErrors.name = INVALID_NAME_MESSAGE;
 
       // Student-specific signup fields
       if (accountType === 'student') {
         const trimmedRoll = rollNumber.trim();
-        if (!trimmedRoll) {
-          newErrors.rollNumber = 'Student roll number / registration ID is required.';
-        }
+        if (!isValidRollNumber(trimmedRoll)) newErrors.rollNumber = INVALID_ROLL_NUMBER_MESSAGE;
         if (!department.trim()) {
           newErrors.department = 'Academic department is required.';
         }
@@ -123,24 +125,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
       newErrors.email = 'Email address is required.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      newErrors.email = 'Please enter a valid email address.';
+    } else if (!isValidEmail(trimmedEmail)) {
+      newErrors.email = 'Enter a valid email address.';
     }
 
     if (authMode === 'signup') {
-      if (accountType === 'student') {
+      if (secondaryEmail.trim()) {
         const trimmedSecondary = secondaryEmail.trim();
-        if (!trimmedSecondary) {
-          newErrors.secondaryEmail = 'Personal recovery email is required for graduation ledger sync.';
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedSecondary)) {
-          newErrors.secondaryEmail = 'Please enter a valid recovery email address.';
-        } else if (trimmedSecondary.toLowerCase() === trimmedEmail.toLowerCase()) {
-          newErrors.secondaryEmail = 'Recovery email must differ from university primary email.';
-        }
-      } else if (accountType === 'guest' && secondaryEmail.trim()) {
-        const trimmedSecondary = secondaryEmail.trim();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedSecondary)) {
-          newErrors.secondaryEmail = 'Please enter a valid secondary email address.';
+        if (!isValidEmail(trimmedSecondary)) {
+          newErrors.secondaryEmail = INVALID_EMAIL_MESSAGE;
         } else if (trimmedSecondary.toLowerCase() === trimmedEmail.toLowerCase()) {
           newErrors.secondaryEmail = 'Secondary email must differ from primary email.';
         }
@@ -149,8 +142,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
     if (!password) {
       newErrors.password = 'Password is required.';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters.';
+    } else if (password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters.';
     }
 
     if (authMode === 'signup') {
@@ -297,14 +290,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     if (field === 'password') setPassword(val);
     if (field === 'confirmPassword') setConfirmPassword(val);
 
-    if (errors[field] || errors.auth) {
-      setErrors((prev) => {
-        const copy = { ...prev };
-        delete copy[field];
-        delete copy.auth;
-        return copy;
-      });
-    }
+    setErrors((prev) => {
+      const copy = { ...prev };
+      delete copy[field];
+      delete copy.auth;
+      if (field === 'email' && val.trim() && !isValidEmail(val)) {
+        copy.email = INVALID_EMAIL_MESSAGE;
+      }
+      if (field === 'secondaryEmail' && val.trim() && !isValidEmail(val)) {
+        copy.secondaryEmail = INVALID_EMAIL_MESSAGE;
+      }
+      return copy;
+    });
   };
 
   const fillDemoAccount = (role: 'super_admin' | 'admin' | 'student' | 'guest') => {
@@ -666,6 +663,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     autoComplete="name"
                     value={name}
                     onChange={(e) => handleInputChange('name', e.target.value)}
+                    maxLength={100}
                     placeholder={accountType === 'student' ? 'e.g. Jordan Lee' : 'e.g. Dr. Sarah Connor'}
                     className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
@@ -692,8 +690,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       id="auth-roll"
                       type="text"
                       value={rollNumber}
-                      onChange={(e) => handleInputChange('rollNumber', e.target.value)}
-                      placeholder="e.g. 2024-CS-42"
+                      onChange={(e) => handleInputChange('rollNumber', e.target.value.replace(/\D/g, ''))}
+                      inputMode="numeric"
+                      maxLength={15}
+                      placeholder="e.g. 202442"
                       className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
                     />
                     {errors.rollNumber && (
@@ -777,6 +777,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   autoComplete="email"
                   value={email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
+                  onBlur={() => {
+                    if (!isValidEmail(email)) setErrors((prev) => ({ ...prev, email: INVALID_EMAIL_MESSAGE }));
+                  }}
+                  maxLength={254}
                   placeholder={
                     authMode === 'signup'
                       ? accountType === 'student'
@@ -794,7 +798,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 )}
               </div>
 
-              {/* Secondary Email (Required for Student recovery, Optional for Guest) */}
+              {/* Optional secondary email */}
               {authMode === 'signup' && (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
@@ -802,14 +806,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       htmlFor="auth-sec-email"
                       className="block font-inter text-[12px] text-white/90"
                     >
-                      {accountType === 'student' ? (
-                        <>Permanent Recovery Email <span className="text-rose-400">*</span></>
-                      ) : (
-                        'Backup Personal Email (Optional)'
-                      )}
+                      Backup Personal Email (Optional)
                     </label>
                     <span className="text-[10px] text-[var(--text-sec-80)]">
-                      {accountType === 'student' ? 'For graduation ledger sync' : 'Must differ from primary'}
+                      Must differ from primary
                     </span>
                   </div>
                   <input
@@ -817,6 +817,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     type="email"
                     value={secondaryEmail}
                     onChange={(e) => handleInputChange('secondaryEmail', e.target.value)}
+                    onBlur={() => {
+                      if (secondaryEmail.trim() && !isValidEmail(secondaryEmail)) {
+                        setErrors((prev) => ({ ...prev, secondaryEmail: INVALID_EMAIL_MESSAGE }));
+                      }
+                    }}
+                    maxLength={254}
                     placeholder="e.g. personal.recovery@gmail.com"
                     className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
@@ -855,6 +861,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
                     value={password}
                     onChange={(e) => handleInputChange('password', e.target.value)}
+                    minLength={8}
                     placeholder="••••••••"
                     className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 pr-8 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
@@ -905,7 +912,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 <button
                   id="btn-auth-submit"
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || Object.keys(errors).length > 0}
                   className="px-8 py-2.5 rounded-xl bg-[var(--primary-accent)] hover:brightness-110 border border-white/[0.30] text-white font-semibold text-xs tracking-widest uppercase transition-all shadow-lg active:scale-95 cursor-pointer backdrop-blur-xl disabled:opacity-50"
                   style={{
                     boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 6px 20px var(--accent-30, rgba(0, 0, 0, 0.25))',

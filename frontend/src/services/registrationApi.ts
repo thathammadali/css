@@ -47,6 +47,8 @@ export function mapBackendRegistration(raw: any): RegistrantItem {
     avatarInitials: name.slice(0, 2).toUpperCase(),
     isWaitlisted: false,
     attendanceCompleted: Boolean(raw.attended),
+    attended: Boolean(raw.attended),
+    backendUserId: raw.user_id == null ? undefined : String(raw.user_id),
   };
 }
 
@@ -108,5 +110,41 @@ export const registrationApi = {
       body: JSON.stringify({ reason }),
     });
     return mapBackendRegistration(raw);
+  },
+
+  async setAttendance(id: string, attended: boolean): Promise<RegistrantItem> {
+    const raw = await requestJson<any>(`/registrations/${encodeURIComponent(id)}/attendance`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attended }),
+    });
+    return mapBackendRegistration(raw);
+  },
+
+  async bulkSetAttendance(
+    sessionId: string,
+    registrationIds: string[],
+    attended: boolean
+  ): Promise<RegistrantItem[]> {
+    const raw = await requestJson<any[]>(
+      `/registrations/sessions/${encodeURIComponent(sessionId)}/attendance`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registration_ids: registrationIds.map((id) => Number(id)),
+          attended,
+        }),
+      }
+    );
+    return raw.map(mapBackendRegistration);
+  },
+
+  async setSessionAttendance(
+    sessionId: string,
+    registrationIds: string[],
+    attended: boolean
+  ): Promise<RegistrantItem[]> {
+    return this.bulkSetAttendance(sessionId, registrationIds, attended);
   },
 };

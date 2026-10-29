@@ -56,7 +56,42 @@ export async function readError(res: Response): Promise<string> {
   const body = await res.json().catch(() => null);
   const d = body?.detail;
   if (Array.isArray(d)) {
-    return d.map((x: any) => `${(x.loc || []).slice(-1)[0] ?? 'field'}: ${x.msg}`).join(', ');
+    const labels: Record<string, string> = {
+      full_name: 'Full name',
+      primary_email: 'Email',
+      secondary_email: 'Secondary email',
+      roll_number: 'Roll number',
+      phone: 'Phone number',
+      department: 'Department',
+      institution: 'Institution',
+      password: 'Password',
+      title: 'Title',
+      capacity: 'Capacity',
+      fee_amount: 'Fee',
+      registration_deadline: 'Registration deadline',
+      reason: 'Reason',
+      meeting_links: 'Meeting link',
+      meeting_link: 'Meeting link',
+      location: 'Location',
+      speaker: 'Speaker',
+    };
+    return d.map((x: any) => {
+      const field = (x.loc || []).filter((part: unknown) => typeof part === 'string').pop() as string | undefined;
+      const label = (field && labels[field]) || 'Field';
+      const type = String(x.type || '');
+      const rawMessage = String(x.msg || '');
+      if (rawMessage.startsWith('Value error, ')) return rawMessage.slice('Value error, '.length);
+      if (type === 'missing') return `${label} is required.`;
+      if (type === 'value_error.email') return 'Enter a valid email address, for example name@gmail.com.';
+      if (type === 'string_too_short') return `${label} is too short.`;
+      if (type === 'string_too_long') return `${label} is too long.`;
+      if (type === 'string_pattern_mismatch') return `${label} has an invalid format.`;
+      if (type === 'int_parsing' || type === 'float_parsing') return `${label} must be a number.`;
+      if (type === 'greater_than' || type === 'greater_than_equal') return `${label} is below the allowed minimum.`;
+      if (type === 'less_than' || type === 'less_than_equal') return `${label} is above the allowed maximum.`;
+      if (rawMessage.includes('Field required')) return `${label} is required.`;
+      return rawMessage.replace(/^Value error, /, '').replace(/\s*\(type=[^)]+\)/, '') || `${label} is invalid.`;
+    }).join(' ');
   }
   if (typeof d === 'string') return d;
   return body?.message || `Request failed (${res.status})`;

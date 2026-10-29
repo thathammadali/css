@@ -37,6 +37,12 @@ def _event_or_404(db: DBSession, event_id: int) -> Event:
     return event
 
 
+def _certificate_response(certificate: Certificate) -> dict:
+    response = CertificateOut.model_validate(certificate).model_dump()
+    response["recipient_roll"] = certificate.user.roll_number if certificate.user else None
+    return response
+
+
 @router.post("/events/{event_id}/certificates/issue", response_model=list[CertificateOut])
 def issue_certificates(
     event_id: int,
@@ -91,7 +97,7 @@ def issue_certificates(
         certificate.category = data.category
         result.append(certificate)
     db.commit()
-    return result
+    return [_certificate_response(certificate) for certificate in result]
 
 
 @router.post("/events/{event_id}/certificates/bulk", response_model=list[CertificateOut])
@@ -169,7 +175,7 @@ def bulk_certificates(
             certificate.category = category
         result.append(certificate)
     db.commit()
-    return result
+    return [_certificate_response(certificate) for certificate in result]
 
 
 @router.get("/events/{event_id}/certificates", response_model=list[CertificateOut])
@@ -179,22 +185,24 @@ def list_event_certificates(
     admin: User = Depends(admin_only),
 ):
     _event_or_404(db, event_id)
-    return (
+    certificates = (
         db.query(Certificate)
         .filter(Certificate.event_id == event_id)
         .order_by(Certificate.id)
         .all()
     )
+    return [_certificate_response(certificate) for certificate in certificates]
 
 
 @router.get("/certificates/me", response_model=list[CertificateOut])
 def my_certificates(db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
-    return (
+    certificates = (
         db.query(Certificate)
         .filter(Certificate.user_id == user.id, Certificate.revoked_at.is_(None))
         .order_by(Certificate.id.desc())
         .all()
     )
+    return [_certificate_response(certificate) for certificate in certificates]
 
 
 @router.post("/certificates/{certificate_id}/revoke", response_model=CertificateOut)
@@ -212,7 +220,7 @@ def revoke_certificate(
     certificate.revoked_at = datetime.now(timezone.utc)
     certificate.revoke_reason = data.reason
     db.commit()
-    return certificate
+    return _certificate_response(certificate)
 
 
 @router.get("/certificates/verify/{code}", response_model=CertificateVerifyOut)
@@ -269,4 +277,4 @@ def reinstate_certificate(
     c.revoked_at = None
     c.revoke_reason = None
     db.commit()
-    return c
+    return _certificate_response(c)

@@ -1,11 +1,22 @@
 from datetime import datetime
 from decimal import Decimal
+import re
 from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 LocationType = Literal["on_campus", "virtual", "hybrid"]
+ROLL_NUMBER_PATTERN = r"^[0-9]{3,15}$"
+
+
+def _clean_text(value: str | None, *, empty_to_none: bool = False) -> str | None:
+    if value is None:
+        return None
+    if any(ord(char) < 32 and char not in "\t\n\r" for char in value):
+        raise ValueError("Please remove unsupported control characters.")
+    cleaned = value.strip()
+    return None if empty_to_none and not cleaned else cleaned
 
 
 class SignupRequest(BaseModel):
@@ -18,16 +29,24 @@ class SignupRequest(BaseModel):
     @field_validator("full_name")
     @classmethod
     def clean_name(cls, v: str) -> str:
-        v = v.strip()
+        v = _clean_text(v) or ""
         if len(v) < 2:
-            raise ValueError("Please enter your full name")
+            raise ValueError("Please enter your full name (letters only, at least 2 characters).")
+        if not any(char.isalpha() for char in v):
+            raise ValueError("Please enter your full name (letters only, at least 2 characters).")
         return v
+
+    @model_validator(mode="after")
+    def secondary_differs(self):
+        if self.secondary_email and self.secondary_email.casefold() == self.primary_email.casefold():
+            raise ValueError("Secondary email must differ from the primary email.")
+        return self
 
     @field_validator("password")
     @classmethod
     def password_fits_bcrypt(cls, v: str) -> str:
         if len(v.encode("utf-8")) > 72:
-            raise ValueError("Password is too long (72 bytes max)")
+            raise ValueError("Password is too long. Please use 72 characters or fewer.")
         return v
 
 
@@ -47,10 +66,32 @@ class UserOut(BaseModel):
 
 class ProfileUpdate(BaseModel):
     position_title: str | None = Field(default=None, max_length=100)
-    roll_number: str | None = Field(default=None, max_length=30)
+    roll_number: str | None = Field(default=None)
     department: str | None = Field(default=None, max_length=100)
-    phone: str | None = Field(default=None, max_length=20)
+    phone: str | None = Field(default=None)
     institution: str | None = Field(default=None, max_length=150)
+
+    @field_validator("position_title", "roll_number", "department", "phone", "institution", mode="before")
+    @classmethod
+    def clean_profile_text(cls, value):
+        return _clean_text(value, empty_to_none=True)
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value):
+        if value is not None:
+            normalized = value.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+            if not re.fullmatch(r"[0-9]{11}", normalized):
+                raise ValueError("Phone number must be 11 digits, for example 03001234567.")
+            return normalized
+        return value
+
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value):
+        if value is not None and not re.fullmatch(ROLL_NUMBER_PATTERN, value):
+            raise ValueError("Roll number must be 3 to 15 digits, for example 24004376045.")
+        return value
 
 
 class TokenOut(BaseModel):
@@ -60,12 +101,12 @@ class TokenOut(BaseModel):
 
 class EventCreate(BaseModel):
     title: str = Field(min_length=3, max_length=200)
-    description: str | None = None
-    category: str | None = None
-    organizer: str | None = None
-    capacity: int | None = None
+    description: str | None = Field(default=None, max_length=5000)
+    category: str | None = Field(default=None, max_length=100)
+    organizer: str | None = Field(default=None, max_length=200)
+    capacity: int | None = Field(default=None, ge=1, le=100000)
     registration_deadline: datetime | None = None
-    fee_amount: Decimal = Decimal("0")
+    fee_amount: Decimal = Field(default=Decimal("0"), ge=0, le=1000000, decimal_places=2)
     location_type: LocationType | None = None
 
 
@@ -123,9 +164,9 @@ class SessionCreate(BaseModel):
     starts_at: datetime
     ends_at: datetime
     timezone: str = "Asia/Karachi"
-    location: str | None = None
-    capacity: int | None = None
-    meeting_link: str | None = None
+    location: str | None = Field(default=None, max_length=200)
+    capacity: int | None = Field(default=None, ge=1, le=100000)
+    meeting_link: str | None = Field(default=None, max_length=500)
     meeting_links: list[MeetingLink] | None = Field(default=None, max_length=5)
     speaker: str | None = Field(default=None, max_length=200)
 
@@ -275,12 +316,12 @@ class AnswersUpdate(BaseModel):
 
 class EventUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=3, max_length=200)
-    description: str | None = None
-    category: str | None = None
-    organizer: str | None = None
-    capacity: int | None = None
+    description: str | None = Field(default=None, max_length=5000)
+    category: str | None = Field(default=None, max_length=100)
+    organizer: str | None = Field(default=None, max_length=200)
+    capacity: int | None = Field(default=None, ge=1, le=100000)
     registration_deadline: datetime | None = None
-    fee_amount: Decimal | None = Field(default=None, ge=0)
+    fee_amount: Decimal | None = Field(default=None, ge=0, le=1000000, decimal_places=2)
     location_type: LocationType | None = None
 
 
@@ -289,9 +330,9 @@ class SessionUpdate(BaseModel):
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     timezone: str | None = None
-    location: str | None = None
-    capacity: int | None = None
-    meeting_link: str | None = None
+    location: str | None = Field(default=None, max_length=200)
+    capacity: int | None = Field(default=None, ge=1, le=100000)
+    meeting_link: str | None = Field(default=None, max_length=500)
     meeting_links: list[MeetingLink] | None = Field(default=None, max_length=5)
     speaker: str | None = Field(default=None, max_length=200)
 
@@ -327,6 +368,7 @@ class CertificateOut(BaseModel):
     event_title: str
     user_id: int | None
     recipient_name: str
+    recipient_roll: str | None = None
     status_tag: str | None
     student_id: str | None
     category: str | None

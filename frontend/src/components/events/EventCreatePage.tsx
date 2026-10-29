@@ -15,6 +15,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { EventItem, DashboardRole, EventStatus } from '../../types';
+import { isMoney } from '../../utils/validators';
 
 const PREDEFINED_CATEGORIES = [
   'Robotics & Hardware',
@@ -89,6 +90,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
     description?: string;
     category?: string;
     organizer?: string;
+    registrationDeadline?: string;
     feeAmount?: string;
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -120,18 +122,30 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
       description?: string;
       category?: string;
       organizer?: string;
+      registrationDeadline?: string;
       feeAmount?: string;
     } = {};
 
-    if (!title.trim()) newErrors.title = 'Event title is required.';
-    if (!description.trim()) newErrors.description = 'Event description is required.';
+    if (title.trim().length < 3 || title.trim().length > 200) {
+      newErrors.title = 'Event title must be between 3 and 200 characters.';
+    }
+    if (!description.trim() || description.trim().length > 5000) {
+      newErrors.description = 'Event description must be between 1 and 5,000 characters.';
+    }
     
     const effectiveCategory = isCustomCategory ? customCategoryInput.trim() : category.trim();
-    if (!effectiveCategory) newErrors.category = 'Event category is required.';
+    if (!effectiveCategory || effectiveCategory.length > 100) {
+      newErrors.category = 'Event category must be between 1 and 100 characters.';
+    }
     
-    if (!organizer.trim()) newErrors.organizer = 'Organizer society name is required.';
-    if (isPaid && (feeAmount <= 0 || isNaN(feeAmount))) {
-      newErrors.feeAmount = 'Valid fee amount required for paid events.';
+    if (!organizer.trim() || organizer.trim().length > 200) {
+      newErrors.organizer = 'Organizer must be between 1 and 200 characters.';
+    }
+    if (!registrationDeadline || Number.isNaN(new Date(`${registrationDeadline}T00:00:00`).getTime())) {
+      newErrors.registrationDeadline = 'Registration deadline must be a valid date.';
+    }
+    if (isPaid && (!isMoney(feeAmount) || feeAmount <= 0)) {
+      newErrors.feeAmount = 'Fee must be from 0 to 1,000,000 with at most 2 decimals.';
     }
 
     setErrors(newErrors);
@@ -264,6 +278,8 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              minLength={3}
+              maxLength={200}
               placeholder="e.g. National Robotics & Autonomous Systems Summit 2026"
               className="w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
             />
@@ -331,6 +347,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
                 type="text"
                 value={organizer}
                 onChange={(e) => setOrganizer(e.target.value)}
+                maxLength={200}
                 placeholder="e.g. Robotics & AI Society"
                 className="w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
               />
@@ -348,6 +365,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              maxLength={5000}
               placeholder="Describe the parent event scope, participating speakers, key workshops, and who should attend..."
               rows={4}
               className="w-full p-3 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)] leading-relaxed"
@@ -441,6 +459,9 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
                 onChange={(e) => setRegistrationDeadline(e.target.value)}
                 className="w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
               />
+              {errors.registrationDeadline && (
+                <p className="text-[11px] text-red-400 mt-1">{errors.registrationDeadline}</p>
+              )}
             </div>
 
             <div>
@@ -468,7 +489,8 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
                       value={feeAmount}
                       onChange={(e) => setFeeAmount(Number(e.target.value))}
                       min={0}
-                      step={50}
+                      max={1000000}
+                      step="0.01"
                       className="w-full h-10 pl-9 pr-3 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
                     />
                   </div>

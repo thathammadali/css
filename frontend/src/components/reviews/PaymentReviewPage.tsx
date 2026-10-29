@@ -33,6 +33,7 @@ import {
 import { eligibilityService } from '../../services/eligibilityService';
 import { eventService } from '../../services/eventService';
 import { registrationApi } from '../../services/registrationApi';
+import { validateReceiptFile } from '../../utils/validators';
 
 interface PaymentReviewPageProps {
   currentRole: DashboardRole;
@@ -68,6 +69,8 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
   const [selectedReceipt, setSelectedReceipt] = useState<RegistrantItem | null>(null);
   const [receiptObjectUrl, setReceiptObjectUrl] = useState<string | null>(null);
   const [selectedRegistrantIds, setSelectedRegistrantIds] = useState<string[]>([]);
+  const [attendanceOverrides, setAttendanceOverrides] = useState<Record<string, boolean>>({});
+  const [attendanceUpdatingIds, setAttendanceUpdatingIds] = useState<string[]>([]);
 
   // Rejection reason modal state
   const [rejectingItem, setRejectingItem] = useState<RegistrantItem | null>(null);
@@ -152,7 +155,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-inter font-medium bg-emerald-950/70 text-emerald-300 border border-emerald-500/50">
             <span className="w-1.5 h-1.5 rounded-full bg-[#34d399]" />
-            <span>Approved & Confirmed</span>
+            <span>Confirmed</span>
           </span>
         );
       case 'rejected':
@@ -177,7 +180,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
     try {
       await registrationApi.approve(registrant.id);
       await onReloadRegistrants?.();
-      onNotify(`Approved payment for ${registrant.name}. Registration confirmed.`);
+      onNotify('Payment approved.');
     } catch (error: any) {
       onNotify(error?.message || 'Failed to approve payment.');
     }
@@ -187,13 +190,13 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
     if (!rejectingItem) return;
     const reason = rejectionReason.trim();
     if (reason.length < 3 || reason.length > 300) {
-      onNotify('Rejection reason is required.');
+      onNotify('Rejection reason must be between 3 and 300 characters.');
       return;
     }
     try {
       await registrationApi.reject(rejectingItem.id, reason);
       await onReloadRegistrants?.();
-      onNotify(`Payment for ${rejectingItem.name} rejected with specified feedback.`);
+      onNotify('Payment rejected.');
       setRejectingItem(null);
       setRejectionReason('');
     } catch (error: any) {
@@ -204,9 +207,9 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
   const handleConfirmResubmission = async () => {
     if (!resubmittingItem || !replacementFile) return;
 
-    const maxBytes = 5 * 1024 * 1024;
-    if (replacementFile.size > maxBytes) {
-      onNotify('File exceeds 5 MB maximum size limit.');
+    const fileError = validateReceiptFile(replacementFile);
+    if (fileError) {
+      onNotify(fileError);
       return;
     }
 
@@ -229,6 +232,24 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
       onNotify(`Registration for "${registrant.sessionTitle}" cancelled.`);
     } catch (error: any) {
       onNotify(error?.message || 'Failed to cancel registration.');
+    }
+  };
+
+  const handleAttendanceChange = async (registrant: RegistrantItem, attended: boolean) => {
+    if (!canReview || registrant.backendStatus !== 'CONFIRMED') return;
+
+    setAttendanceUpdatingIds((current) => [...current, registrant.id]);
+    try {
+      const updated = await registrationApi.setAttendance(registrant.id, attended);
+      setAttendanceOverrides((current) => ({
+        ...current,
+        [registrant.id]: updated.attended === true,
+      }));
+      onNotify(`Attendance ${attended ? 'marked' : 'cleared'}.`);
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to update attendance.');
+    } finally {
+      setAttendanceUpdatingIds((current) => current.filter((id) => id !== registrant.id));
     }
   };
 
@@ -413,6 +434,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
               placeholder="Search attendee, roll no, session..."
               className="w-full h-10 pl-9 pr-8 rounded-xl bg-white/[0.05] border border-white/[0.12] text-xs text-white placeholder-white/40 focus:outline-none focus:border-[var(--primary-accent)]"
             />
+            <p className="text-[11px] text-white/50 text-right">{rejectionReason.length} / 300</p>
             {searchQuery && (
               <button
                 type="button"
@@ -644,6 +666,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                     <th className="py-3 px-4">Session & Fee</th>
                     <th className="py-3 px-4">Receipt Slip</th>
                     <th className="py-3 px-4">Status & Schema</th>
+                    <th className="py-3 px-4">Attended</th>
                     <th className="py-3 px-4">Certificate Eligibility</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
@@ -683,8 +706,8 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                     (reg.amount &&
                       !reg.amount.includes('0') &&
                       !reg.amount.toLowerCase().includes('free'));
-                  const isPaymentPending = isPaidSession && reg.status === 'pending';
-                  const isPaymentRejected = isPaidSession && reg.status === 'rejected';
+                  const isPaymentPending = reg.backendStatus === 'PAYMENT_PENDING';
+                  const isPaymentRejected = reg.backendStatus === 'PAYMENT_REJECTED';
                   const isRegistrationPending =
                     reg.lifecycleStatus === 'FORM_IN_PROGRESS' ||
                     reg.lifecycleStatus === 'SUBMITTED';
@@ -747,7 +770,11 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                             <span className="truncate max-w-[140px]">{reg.receiptFileName}</span>
                           </button>
                         ) : (
-                          <span className="text-white/40 text-[11px] italic">No slip required / free</span>
+                          <span className="text-white/40 text-[11px] italic">
+                            {reg.backendStatus === 'PAYMENT_PENDING' || reg.backendStatus === 'PAYMENT_REJECTED'
+                              ? 'No receipt uploaded'
+                              : 'No slip required / free'}
+                          </span>
                         )}
                       </td>
 
@@ -760,6 +787,24 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                           <div className="p-2 rounded-lg bg-rose-950/60 border border-rose-500/30 text-[11px] text-rose-200">
                             <strong>Reason:</strong> {reg.receiptRejectedReason}
                           </div>
+                        )}
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        {reg.backendStatus === 'CONFIRMED' ? (
+                          <label className="inline-flex items-center gap-2 text-[11px] text-white/70">
+                            <input
+                              type="checkbox"
+                              checked={attendanceOverrides[reg.id] ?? reg.attended === true}
+                              disabled={attendanceUpdatingIds.includes(reg.id)}
+                              onChange={(event) => handleAttendanceChange(reg, event.target.checked)}
+                              className="rounded accent-[var(--primary-accent)] cursor-pointer disabled:cursor-wait"
+                              aria-label={`Mark ${reg.name} as attended`}
+                            />
+                            <span>{(attendanceOverrides[reg.id] ?? reg.attended === true) ? 'Yes' : 'No'}</span>
+                          </label>
+                        ) : (
+                          <span className="text-white/40">-</span>
                         )}
                       </td>
 
@@ -850,6 +895,18 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                               <span className="block text-[10px] text-amber-200/70">
                                 Access becomes available after verification
                               </span>
+                              {!reg.receiptFileName && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setResubmittingItem(reg);
+                                    setReplacementFile(null);
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-[var(--primary-accent)] text-white text-xs font-medium cursor-pointer"
+                                >
+                                  Upload receipt
+                                </button>
+                              )}
                             </div>
                           ) : isPaymentRejected ? (
                             /* State 4: Payment Rejected */
@@ -976,7 +1033,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
               <textarea
                 rows={3}
                 value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
+                onChange={(e) => setRejectionReason(e.target.value.slice(0, 300))}
                 placeholder="e.g. Transaction ID was truncated; deposited amount does not match session fee (PKR 500)."
                 className="w-full p-3 rounded-xl bg-white/[0.06] border border-white/[0.15] text-white focus:outline-none focus:border-rose-400 resize-none"
               />
@@ -1027,18 +1084,11 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    const validExtensions = ['jpg', 'jpeg', 'png', 'pdf'];
-                    const ext = file.name.split('.').pop()?.toLowerCase() || '';
-                    if (!validExtensions.includes(ext)) {
-                      setReplacementError('Invalid file format. Allowed files: PDF, JPG, or PNG.');
+                    const fileError = validateReceiptFile(file);
+                    if (fileError) {
+                      setReplacementError(fileError);
                       setReplacementFile(null);
-                      onNotify('Invalid file format: Please select a PDF, JPG, or PNG file.');
-                      return;
-                    }
-                    if (file.size > 5 * 1024 * 1024) {
-                      setReplacementError('Receipt file exceeds 5 MB maximum allowed size.');
-                      setReplacementFile(null);
-                      onNotify('File too large: Maximum 5 MB per receipt upload.');
+                      onNotify(fileError);
                       return;
                     }
                     setReplacementError(null);

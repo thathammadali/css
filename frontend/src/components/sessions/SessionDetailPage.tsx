@@ -32,9 +32,9 @@ import { SessionResourcesSection } from './SessionResourcesSection';
 import { SessionCommentsSection } from './SessionCommentsSection';
 import { SessionTasksSection } from './SessionTasksSection';
 import { eventService } from '../../services/eventService';
-import { INITIAL_ATTENDANCE_RECORDS } from '../../data/mockAttendance';
-import { eligibilityService } from '../../services/eligibilityService';
 import { getSessionCapacity } from '../../utils/capacityHelper';
+import { registrationApi } from '../../services/registrationApi';
+import { validateReceiptFile } from '../../utils/validators';
 import MeetingLinks from '../MeetingLinks';
 
 interface SessionDetailPageProps {
@@ -53,6 +53,7 @@ interface SessionDetailPageProps {
   onNavigateToParentEvent?: (eventId: string) => void;
   onEditSession?: (session: SessionItem) => void;
   onUpdateSession?: (updatedSession: SessionItem) => void;
+  onReloadRegistrants?: () => Promise<void>;
   onNotify: (msg: string) => void;
 }
 
@@ -72,9 +73,13 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   onNavigateToParentEvent,
   onEditSession,
   onUpdateSession,
+  onReloadRegistrants,
   onNotify,
 }) => {
   const [registered, setRegistered] = useState(isRegistered);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
+  const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
 
   // Synchronize registered status when prop changes or user navigates between sessions
   useEffect(() => {
@@ -102,8 +107,11 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   const isWaitlisted =
     registered &&
     (effectiveRegistrant?.lifecycleStatus === 'WAITLISTED' || effectiveRegistrant?.isWaitlisted);
-  const isPaymentPending = !isWaitlisted && isPaidSession && effectiveRegistrant?.status === 'pending';
-  const isPaymentRejected = !isWaitlisted && isPaidSession && effectiveRegistrant?.status === 'rejected';
+  const isPaymentPending =
+    !isWaitlisted && effectiveRegistrant?.backendStatus === 'PAYMENT_PENDING';
+  const isPaymentRejected =
+    !isWaitlisted && effectiveRegistrant?.backendStatus === 'PAYMENT_REJECTED';
+  const isCancelled = effectiveRegistrant?.backendStatus === 'CANCELLED';
   const isRegistrationPending =
     !isWaitlisted &&
     registered &&
@@ -112,6 +120,53 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   const sessionRegistrants = registrants.filter(
     (r) => r.sessionId === session.id
   );
+
+  const handleAttendance = async (registration: RegistrantItem, attended: boolean) => {
+    try {
+      await registrationApi.setAttendance(registration.id, attended);
+      await onReloadRegistrants?.();
+      onNotify(attended ? 'Registration marked attended.' : 'Attendance cleared.');
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to update attendance.');
+    }
+  };
+
+  const handleMarkAllAttended = async () => {
+    const confirmed = sessionRegistrants.filter((registration) => registration.backendStatus === 'CONFIRMED');
+    if (confirmed.length === 0) {
+      onNotify('No confirmed registrations are available.');
+      return;
+    }
+    try {
+      await registrationApi.setSessionAttendance(session.id, confirmed.map((registration) => registration.id), true);
+      await onReloadRegistrants?.();
+      onNotify('All confirmed registrations marked attended.');
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to update attendance.');
+    }
+  };
+
+  const handleReceiptUpload = async () => {
+    if (!effectiveRegistrant || !receiptFile) return;
+    const error = validateReceiptFile(receiptFile);
+    if (error) {
+      setReceiptError(error);
+      onNotify(error);
+      return;
+    }
+    setIsUploadingReceipt(true);
+    try {
+      await registrationApi.uploadReceipt(effectiveRegistrant.id, receiptFile);
+      await onReloadRegistrants?.();
+      setReceiptFile(null);
+      setReceiptError(null);
+      onNotify('Receipt uploaded. Your seat is confirmed only after an admin approves it.');
+    } catch (uploadError: any) {
+      onNotify(uploadError?.message || 'Failed to upload receipt.');
+    } finally {
+      setIsUploadingReceipt(false);
+    }
+  };
 
   const getBadgeStyle = (status: SessionStatus) => {
     if (session.deliveryStatus === 'LIVE') {
@@ -456,6 +511,10 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                   You will be auto-notified if an enrolled seat becomes available
                 </span>
               </div>
+            ) : isCancelled ? (
+              <span className="px-3.5 py-2 rounded-xl bg-white/10 text-white/60 border border-white/20 text-xs font-semibold">
+                Registration Cancelled
+              </span>
             ) : isSessionClosed || session.deliveryStatus === 'COMPLETED' ? (
               <div className="flex items-center gap-2">
                 <span className="px-3.5 py-2 rounded-xl bg-white/10 text-white/70 border border-white/20 text-xs font-semibold flex items-center justify-center gap-1.5">
@@ -478,6 +537,25 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                 <span className="text-[11px] font-mono text-amber-200/80">
                   Meeting access becomes available after payment approval
                 </span>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    setReceiptFile(file);
+                    setReceiptError(file ? validateReceiptFile(file) : null);
+                  }}
+                  className="text-[11px] text-white/70"
+                />
+                <button
+                  type="button"
+                  disabled={!receiptFile || isUploadingReceipt}
+                  onClick={handleReceiptUpload}
+                  className="px-3 py-1.5 rounded-lg bg-[var(--primary-accent)] text-[11px] text-white disabled:opacity-50"
+                >
+                  {isUploadingReceipt ? 'Uploading...' : 'Upload receipt'}
+                </button>
+                {receiptError && <span className="text-[11px] text-rose-300">{receiptError}</span>}
               </div>
             ) : isPaymentRejected ? (
               <div className="flex flex-col sm:items-end gap-1">
@@ -486,8 +564,28 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                   <span>Payment Slip Rejected</span>
                 </span>
                 <span className="text-[11px] text-rose-200/80">
-                  Please resubmit your receipt in My Registrations
+                  {effectiveRegistrant?.receiptRejectedReason || 'Please upload a new receipt.'}
                 </span>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  aria-label="Upload new receipt"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    setReceiptFile(file);
+                    setReceiptError(file ? validateReceiptFile(file) : null);
+                  }}
+                  className="text-[11px] text-white/70"
+                />
+                <button
+                  type="button"
+                  disabled={!receiptFile || isUploadingReceipt}
+                  onClick={handleReceiptUpload}
+                  className="px-3 py-1.5 rounded-lg bg-[var(--primary-accent)] text-[11px] text-white disabled:opacity-50"
+                >
+                  {isUploadingReceipt ? 'Uploading...' : 'Upload new receipt'}
+                </button>
+                {receiptError && <span className="text-[11px] text-rose-300">{receiptError}</span>}
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row items-center gap-2.5">
@@ -761,6 +859,13 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                 </p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={handleMarkAllAttended}
+              className="px-3 py-2 rounded-lg bg-emerald-600/80 text-white text-xs"
+            >
+              Mark all confirmed as attended
+            </button>
 
             {/* Mobile Screens (sm:hidden): Responsive Cards View */}
             <div className="sm:hidden space-y-3">
@@ -770,13 +875,8 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                 </div>
               ) : (
                 sessionRegistrants.map((reg) => {
-                  const elig = eligibilityService.evaluateCertificateEligibility(reg, { session });
-                  const att = INITIAL_ATTENDANCE_RECORDS.find(
-                    (a) =>
-                      a.sessionId === session.id &&
-                      (a.participantId === reg.id ||
-                        (reg.email && a.participantEmail.toLowerCase() === reg.email.toLowerCase()))
-                  );
+                  const elig = { eligible: Boolean(reg.attended), checks: { registrationConfirmed: reg.backendStatus === 'CONFIRMED', paymentApproved: reg.backendStatus === 'CONFIRMED', assignmentCompleted: true } };
+                  const att = reg.attended ? { verificationStatus: 'verified', thresholdMet: true, durationMinutes: 0, verifiedBy: 'Admin' } : null;
 
                   return (
                     <div
@@ -802,6 +902,14 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                           {elig.eligible ? '✓ Eligible' : 'Ineligible'}
                         </span>
                       </div>
+                      <button
+                        type="button"
+                        disabled={reg.backendStatus !== 'CONFIRMED'}
+                        onClick={() => handleAttendance(reg, !reg.attended)}
+                        className="px-2.5 py-1 rounded-lg bg-cyan-600/70 text-white text-[11px] disabled:opacity-40"
+                      >
+                        {reg.attended ? 'Clear attendance' : 'Mark attended'}
+                      </button>
 
                       {/* 4 Status Checkpoints Grid */}
                       <div className="grid grid-cols-2 gap-2 text-[11px] p-2.5 rounded-xl bg-black/30 border border-white/[0.06]">
@@ -892,16 +1000,21 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                     </tr>
                   ) : (
                     sessionRegistrants.map((reg) => {
-                      const elig = eligibilityService.evaluateCertificateEligibility(reg, { session });
-                      const att = INITIAL_ATTENDANCE_RECORDS.find(
-                        (a) =>
-                          a.sessionId === session.id &&
-                          (a.participantId === reg.id ||
-                            (reg.email && a.participantEmail.toLowerCase() === reg.email.toLowerCase()))
-                      );
+                      const elig = { eligible: Boolean(reg.attended), checks: { registrationConfirmed: reg.backendStatus === 'CONFIRMED', paymentApproved: reg.backendStatus === 'CONFIRMED', assignmentCompleted: true } };
+                      const att = reg.attended ? { verificationStatus: 'verified', thresholdMet: true, durationMinutes: 0, verifiedBy: 'Admin' } : null;
 
                       return (
                         <tr key={reg.id} className="hover:bg-white/[0.02]">
+                          <td className="py-3 px-3">
+                            <button
+                              type="button"
+                              disabled={reg.backendStatus !== 'CONFIRMED'}
+                              onClick={() => handleAttendance(reg, !reg.attended)}
+                              className="px-2 py-1 rounded bg-cyan-600/70 text-white text-[10px] disabled:opacity-40"
+                            >
+                              {reg.attended ? 'Clear' : 'Mark attended'}
+                            </button>
+                          </td>
                           <td className="py-3 px-3">
                             <div className="font-medium text-white">{reg.name}</div>
                             <div className="text-[11px] font-mono text-white/50">{reg.rollNumber}</div>

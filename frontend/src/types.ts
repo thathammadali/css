@@ -269,9 +269,11 @@ export interface RegistrantItem {
   isWaitlisted?: boolean;
   waitlistPosition?: number;
   attendanceCompleted?: boolean;
+  attended?: boolean;
   assignmentCompleted?: boolean;
   certificateEligible?: boolean;
   certificateId?: string;
+  backendUserId?: string;
 }
 
 export interface GuestRegistrationPayload {
@@ -379,6 +381,10 @@ export interface CertificateTemplateConfig {
 export interface CertificateItem {
   id: string;
   verificationCode: string; // e.g. SEMS-2026-XXXXXX
+  code?: string;
+  backendId?: string;
+  statusTag?: string;
+  category?: string;
   title: string;
   sessionTitle: string;
   eventName?: string;

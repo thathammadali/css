@@ -17,6 +17,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { SessionItem, DashboardRole, EventItem } from '../../types';
+import { isIntegerInRange, isMoney } from '../../utils/validators';
 
 interface SessionCreatePageProps {
   currentRole: DashboardRole;
@@ -203,6 +204,7 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
     meetingUrl?: string;
     category?: string;
     amount?: string;
+    capacity?: string;
   }>({});
 
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -219,19 +221,30 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
       meetingUrl?: string;
       category?: string;
       amount?: string;
+      capacity?: string;
     } = {};
 
     if (!selectedEventId.trim()) {
       newErrors.eventId = 'Parent event is required. Standalone sessions are not permitted.';
     }
-    if (!title.trim()) {
-      newErrors.title = 'Session title is required.';
+    if (title.trim().length < 3 || title.trim().length > 200) {
+      newErrors.title = 'Session title must be between 3 and 200 characters.';
     }
-    if (!date.trim()) {
-      newErrors.date = 'Session date is required.';
+    if (!date.trim() || Number.isNaN(new Date(`${date}T00:00:00`).getTime())) {
+      newErrors.date = 'Session date must be valid.';
+    }
+    if (startTime && endTime && endTime <= startTime) {
+      newErrors.date = 'Session end time must be after the start time.';
+    }
+    if (
+      registrationRequired &&
+      registrationDeadline &&
+      Number.isNaN(new Date(`${registrationDeadline}T00:00:00`).getTime())
+    ) {
+      newErrors.date = 'Registration deadline must be a valid date.';
     }
 
-    if (deliveryMode !== 'online' && !location.trim()) {
+    if (deliveryMode !== 'online' && (!location.trim() || location.trim().length > 200)) {
       newErrors.location = 'Physical venue / room location is required.';
     }
     if (deliveryMode !== 'in_person') {
@@ -247,8 +260,11 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
       newErrors.category = 'Please enter a name for the custom category.';
     }
 
-    if (paymentRequired && (amount <= 0 || isNaN(amount))) {
-      newErrors.amount = 'Please enter a valid registration fee amount.';
+    if (paymentRequired && (!isMoney(amount) || amount <= 0)) {
+      newErrors.amount = 'Fee must be from 0 to 1,000,000 with at most 2 decimals.';
+    }
+    if (!isIntegerInRange(totalSeats, 1, 100000)) {
+      newErrors.capacity = 'Capacity must be a whole number from 1 to 100,000.';
     }
 
     setErrors(newErrors);
@@ -486,6 +502,8 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
               id="session-title"
               type="text"
               value={title}
+              minLength={3}
+              maxLength={200}
               onChange={(e) => {
                 setTitle(e.target.value);
                 if (hasSubmitted) {
@@ -853,13 +871,14 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
             <input
               id="session-seats"
               type="number"
-              min={5}
-              max={1000}
-              step={5}
+              min={1}
+              max={100000}
+              step={1}
               value={totalSeats}
               onChange={(e) => setTotalSeats(Number(e.target.value))}
               className="w-full h-11 px-3.5 rounded-xl bg-black/30 border border-white/[0.15] text-[14px] text-white focus:outline-none focus:border-[var(--primary-accent)] focus:ring-1 focus:ring-[var(--primary-accent)]"
             />
+            {errors.capacity && <p className="text-[11px] text-rose-300">{errors.capacity}</p>}
             <p className="text-[11px] text-[var(--text-sec-70)]">
               Defines admission capacity. System will display available seats and block over-enrollment.
             </p>
