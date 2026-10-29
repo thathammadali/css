@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,6 +19,7 @@ origins = [
     "https://ais-dev-6vwfj5vktuwcrlsigz6d2a-703931185299.asia-northeast1.run.app",
     "https://ais-pre-6vwfj5vktuwcrlsigz6d2a-703931185299.asia-northeast1.run.app",
 ]
+origins += [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
