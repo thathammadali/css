@@ -18,6 +18,12 @@ import { DashboardRole, AuthUser, ThemeSwatch } from '../../types';
 import { THEME_STORAGE_KEY, applyThemeToDocument } from '../../data/themes';
 import { useTheme } from '../../context/ThemeContext';
 import { apiFetch, authApi } from '../../services/apiClient';
+import {
+  INVALID_EMAIL_MESSAGE,
+  INVALID_PHONE_MESSAGE,
+  isValidEmail,
+  isValidPhone,
+} from '../../utils/validators';
 
 export interface ProfilePageProps {
   currentRole: DashboardRole;
@@ -121,6 +127,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (secondaryEmail.trim() && !isValidEmail(secondaryEmail)) {
+      onNotify(INVALID_EMAIL_MESSAGE);
+      return;
+    }
+    if (phone.trim() && !isValidPhone(phone)) {
+      onNotify(INVALID_PHONE_MESSAGE);
+      return;
+    }
     setIsSaving(true);
     try {
       const updatedAccount = await authApi.updateProfile({
