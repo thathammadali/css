@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Role, User
+from rate_limit import rate_limit
 from schemas import ProfileUpdate, SignupRequest, TokenOut, UserOut
 from security import create_access_token, decode_access_token, hash_password, verify_password
 
@@ -67,7 +68,12 @@ def require_roles(*allowed: str):
     return checker
 
 
-@router.post("/signup", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/signup",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit("signup", 5))],
+)
 def signup(data: SignupRequest, db: Session = Depends(get_db)):
     primary_email = data.primary_email.lower()
     secondary_email = data.secondary_email.lower() if data.secondary_email else None
@@ -99,7 +105,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
     return to_user_out(user)
 
 
-@router.post("/login", response_model=TokenOut)
+@router.post("/login", response_model=TokenOut, dependencies=[Depends(rate_limit("login", 10))])
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     email = form.username.strip().lower()
     user = (
