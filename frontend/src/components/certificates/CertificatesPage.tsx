@@ -88,9 +88,8 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
   }, [isVerifyMode, targetCertificateId]);
 
   const visibleItems = useMemo(() => {
-    if (isAdmin || !currentUser) return isAdmin ? items : [];
-    return items.filter((item) => item.recipientName === currentUser.name);
-  }, [currentUser, isAdmin, items]);
+    return items;
+  }, [items]);
 
   const run = async (action: () => Promise<CertificateItem[] | CertificateItem>) => {
     setBusy(true);

@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import Session as DBSession, object_session
 
 from auth import get_current_user, require_roles
 from database import get_db
@@ -39,7 +39,12 @@ def _event_or_404(db: DBSession, event_id: int) -> Event:
 
 def _certificate_response(certificate: Certificate) -> dict:
     response = CertificateOut.model_validate(certificate).model_dump()
-    response["recipient_roll"] = certificate.user.roll_number if certificate.user else None
+    roll = None
+    if certificate.user_id:
+        session = object_session(certificate)
+        owner = session.get(User, certificate.user_id) if session else None
+        roll = owner.roll_number if owner else None
+    response["recipient_roll"] = roll
     return response
 
 
@@ -198,7 +203,7 @@ def list_event_certificates(
 def my_certificates(db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
     certificates = (
         db.query(Certificate)
-        .filter(Certificate.user_id == user.id, Certificate.revoked_at.is_(None))
+        .filter(Certificate.user_id == user.id)
         .order_by(Certificate.id.desc())
         .all()
     )
