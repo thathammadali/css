@@ -17,6 +17,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { SessionItem, DashboardRole, EventItem } from '../../types';
+import { isIntegerInRange, isMoney } from '../../utils/validators';
 
 interface SessionCreatePageProps {
   currentRole: DashboardRole;
@@ -27,6 +28,8 @@ interface SessionCreatePageProps {
   onSave: (session: SessionItem) => void;
   onNotify: (msg: string) => void;
 }
+
+const PAYMENT_METHODS = ['Bank transfer', 'JazzCash', 'Easypaisa', 'Other'];
 
 const PREDEFINED_SESSION_CATEGORIES = [
   'Technical Workshop',
@@ -53,6 +56,36 @@ const TIMEZONES = [
   'AEST (UTC+10:00)',
 ];
 
+const SESSION_TIMEZONE = 'Asia/Karachi';
+
+function formatDateForInput(value: string | undefined, timezone: string): string {
+  const text = String(value ?? '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(parsed);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function formatTimeForInput(value: string | undefined, timezone: string): string {
+  const text = String(value ?? '').trim();
+  if (/^\d{2}:\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(parsed);
+}
+
 export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
   currentRole,
   initialSession,
@@ -62,44 +95,94 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
   onSave,
   onNotify,
 }) => {
-  const [selectedEventId, setSelectedEventId] = useState<string>(
-    initialSession?.eventId || preselectedEventId || (availableEvents[0]?.id || '')
+  const initialSessionTimezone = String(initialSession?.timezone ?? '');
+  const initialTimezone = TIMEZONES.includes(initialSessionTimezone)
+    ? initialSessionTimezone
+    : 'PKT (UTC+5:00)';
+  const initialLinks = initialSession?.meeting_links ?? [];
+  const hasInitialLocation = Boolean(
+    String(initialSession?.location ?? '').trim() &&
+      String(initialSession?.location ?? '').trim().toLowerCase() !== 'tba'
   );
-  const [title, setTitle] = useState(initialSession?.title || '');
-  const [description, setDescription] = useState(initialSession?.description || '');
-  const [date, setDate] = useState(initialSession?.date || '');
+  const hasInitialLinks = initialLinks.length > 0 || Boolean(initialSession?.meetingUrl);
+
+  const [selectedEventId, setSelectedEventId] = useState<string>(
+    String(initialSession?.eventId ?? preselectedEventId ?? availableEvents[0]?.id ?? '')
+  );
+  const [title, setTitle] = useState(String(initialSession?.title ?? ''));
+  const [description, setDescription] = useState(String(initialSession?.description ?? ''));
+  const [date, setDate] = useState(() =>
+    formatDateForInput(initialSession?.startTime || initialSession?.date, SESSION_TIMEZONE)
+  );
   const [startTime, setStartTime] = useState(
-    initialSession?.time ? initialSession.time.split('–')[0]?.trim() : '14:00'
+    () =>
+      formatTimeForInput(
+        initialSession?.startTime || initialSession?.time?.split(/[–-]/)[0],
+        SESSION_TIMEZONE
+      ) || '14:00'
   );
   const [endTime, setEndTime] = useState(
-    initialSession?.time ? initialSession.time.split('–')[1]?.trim() : '17:30'
+    () =>
+      formatTimeForInput(
+        initialSession?.endTime || initialSession?.time?.split(/[–-]/)[1],
+        SESSION_TIMEZONE
+      ) || '17:30'
   );
-  const [timezone, setTimezone] = useState(initialSession?.timezone || 'PKT (UTC+5:00)');
+  const [timezone, setTimezone] = useState(initialTimezone);
 
   // Delivery Mode: In-Person / Online / Hybrid
   const [deliveryMode, setDeliveryMode] = useState<'in_person' | 'online' | 'hybrid'>(
-    initialSession?.isOnline && !initialSession.location ? 'online' : initialSession?.isOnline ? 'hybrid' : 'in_person'
+    initialSession
+      ? hasInitialLocation && hasInitialLinks
+        ? 'hybrid'
+        : hasInitialLinks
+        ? 'online'
+        : 'in_person'
+      : 'in_person'
   );
-  const [location, setLocation] = useState(initialSession?.location || 'Engineering Hall A-102');
-  const [meetingUrl, setMeetingUrl] = useState(initialSession?.meetingUrl || '');
-  const [meetingDetails, setMeetingDetails] = useState(initialSession?.meetingDetails || '');
+  const [location, setLocation] = useState(
+    String(initialSession?.location ?? 'Engineering Hall A-102')
+  );
+  type LinkRow = { url: string; label: string; isPublic: boolean };
+  const [linkRows, setLinkRows] = useState<LinkRow[]>(() => {
+    const existing: LinkRow[] = initialSession?.meeting_links?.length
+      ? initialSession.meeting_links.map((l) => ({
+          url: String(l.url ?? ''),
+          label: String(l.label ?? ''),
+          isPublic: Boolean(l.public),
+        }))
+      : initialSession?.meetingUrl
+      ? [{ url: String(initialSession.meetingUrl), label: '', isPublic: false }]
+      : [];
+    return existing.length ? existing : [{ url: '', label: '', isPublic: false }];
+  });
+  const meetingUrl = linkRows[0]?.url || '';
+  const [meetingDetails, setMeetingDetails] = useState(
+    String(initialSession?.meetingDetails ?? '')
+  );
 
   // Category selection & Custom Category support
   const parentEvt = availableEvents.find((e) => e.id === (initialSession?.eventId || preselectedEventId));
-  const initialCategoryVal = initialSession?.category || parentEvt?.category || 'Technical Workshop';
+  const initialCategoryVal = String(
+    initialSession?.category ?? parentEvt?.category ?? 'Technical Workshop'
+  );
   const isInitiallyCustom = !PREDEFINED_SESSION_CATEGORIES.includes(initialCategoryVal);
 
   const [category, setCategory] = useState(isInitiallyCustom ? 'Custom' : initialCategoryVal);
   const [isCustomCategory, setIsCustomCategory] = useState(isInitiallyCustom);
-  const [customCategoryInput, setCustomCategoryInput] = useState(isInitiallyCustom ? initialCategoryVal : '');
+  const [customCategoryInput, setCustomCategoryInput] = useState(
+    isInitiallyCustom ? initialCategoryVal : ''
+  );
 
   // Capacity / Seats
   const [totalSeats, setTotalSeats] = useState<number>(initialSession?.totalSeats || 60);
 
   // Society / Organizer
   const [society, setSociety] = useState(
-    initialSession?.society ||
+    String(
+      initialSession?.society ??
       (parentEvt?.organizer || 'Robotics & AI Society')
+    )
   );
 
   // Registration & Payment controls
@@ -107,12 +190,31 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
     initialSession?.registrationRequired !== undefined ? initialSession.registrationRequired : true
   );
   const [registrationDeadline, setRegistrationDeadline] = useState(
-    initialSession?.registrationDeadline || ''
+    String(initialSession?.registrationDeadline ?? '')
   );
   const [paymentRequired, setPaymentRequired] = useState(
     initialSession?.isPaid !== undefined ? initialSession.isPaid : false
   );
   const [amount, setAmount] = useState<number>(initialSession?.amount || 500);
+
+  // New sessions start from the payment details of another paid session in the same event.
+  const findSiblingPaymentDetails = (eventId: string) =>
+    availableEvents
+      .find((e) => e.id === eventId)
+      ?.sessions.find((s) => s.isPaid && s.paymentDetails?.accountNumber)?.paymentDetails;
+  const [prefill] = useState(() => (initialSession ? undefined : findSiblingPaymentDetails(selectedEventId)));
+  const [paymentMethod, setPaymentMethod] = useState(
+    initialSession?.paymentDetails?.method || prefill?.method || PAYMENT_METHODS[0]
+  );
+  const [accountTitle, setAccountTitle] = useState(
+    initialSession?.paymentDetails?.accountTitle || prefill?.accountTitle || ''
+  );
+  const [accountNumber, setAccountNumber] = useState(
+    initialSession?.paymentDetails?.accountNumber || prefill?.accountNumber || ''
+  );
+  const [paymentInstructions, setPaymentInstructions] = useState(
+    initialSession?.paymentDetails?.instructions || prefill?.instructions || ''
+  );
 
   // Inline validation errors
   const [errors, setErrors] = useState<{
@@ -123,6 +225,10 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
     meetingUrl?: string;
     category?: string;
     amount?: string;
+    accountTitle?: string;
+    accountNumber?: string;
+    paymentInstructions?: string;
+    capacity?: string;
   }>({});
 
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -139,31 +245,72 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
       meetingUrl?: string;
       category?: string;
       amount?: string;
+      accountTitle?: string;
+      accountNumber?: string;
+      paymentInstructions?: string;
+      capacity?: string;
     } = {};
 
     if (!selectedEventId.trim()) {
       newErrors.eventId = 'Parent event is required. Standalone sessions are not permitted.';
     }
-    if (!title.trim()) {
-      newErrors.title = 'Session title is required.';
+    if (title.trim().length < 3 || title.trim().length > 200) {
+      newErrors.title = 'Session title must be between 3 and 200 characters.';
     }
-    if (!date.trim()) {
-      newErrors.date = 'Session date is required.';
+    if (!date.trim() || Number.isNaN(new Date(`${date}T00:00:00`).getTime())) {
+      newErrors.date = 'Session date must be valid.';
+    }
+    if (startTime && endTime && endTime <= startTime) {
+      newErrors.date = 'Session end time must be after the start time.';
+    }
+    if (
+      registrationRequired &&
+      registrationDeadline &&
+      Number.isNaN(new Date(`${registrationDeadline}T00:00:00`).getTime())
+    ) {
+      newErrors.date = 'Registration deadline must be a valid date.';
     }
 
-    if (deliveryMode !== 'online' && !location.trim()) {
+    if (deliveryMode !== 'online' && (!location.trim() || location.trim().length > 200)) {
       newErrors.location = 'Physical venue / room location is required.';
     }
-    if (deliveryMode !== 'in_person' && !meetingUrl.trim()) {
-      newErrors.meetingUrl = 'Online meeting link (Zoom, Meet, Teams) is required.';
+    if (deliveryMode !== 'in_person') {
+      const filled = linkRows.filter((r) => r.url.trim());
+      if (filled.length === 0) {
+        newErrors.meetingUrl = 'At least one meeting link (Zoom, Meet, YouTube, Teams) is required.';
+      } else if (filled.some((r) => !/^https?:\/\//i.test(r.url.trim()))) {
+        newErrors.meetingUrl = 'Every link must start with http:// or https://';
+      }
     }
 
     if (isCustomCategory && !customCategoryInput.trim()) {
       newErrors.category = 'Please enter a name for the custom category.';
     }
 
-    if (paymentRequired && (amount <= 0 || isNaN(amount))) {
-      newErrors.amount = 'Please enter a valid registration fee amount.';
+    if (paymentRequired && (!isMoney(amount) || amount <= 0)) {
+      newErrors.amount = 'Fee must be from 0 to 1,000,000 with at most 2 decimals.';
+    }
+    if (paymentRequired) {
+      const accountTitleValue = accountTitle.trim();
+      const accountNumberValue = accountNumber.trim();
+      if (!accountTitleValue) {
+        newErrors.accountTitle = 'Please enter the account title where students should send payment.';
+      } else if (accountTitleValue.length > 100) {
+        newErrors.accountTitle = 'Account title must be 100 characters or fewer.';
+      }
+      if (!accountNumberValue) {
+        newErrors.accountNumber = 'Please enter the account number where students should send payment.';
+      } else if (accountNumberValue.length > 34) {
+        newErrors.accountNumber = 'Account number must be 34 characters or fewer.';
+      } else if (!/^[A-Za-z0-9 -]+$/.test(accountNumberValue)) {
+        newErrors.accountNumber = 'Account number can only contain letters, digits, spaces and dashes.';
+      }
+      if (paymentInstructions.trim().length > 500) {
+        newErrors.paymentInstructions = 'Payment instructions must be 500 characters or fewer.';
+      }
+    }
+    if (!isIntegerInRange(totalSeats, 1, 100000)) {
+      newErrors.capacity = 'Capacity must be a whole number from 1 to 100,000.';
     }
 
     setErrors(newErrors);
@@ -185,46 +332,75 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
     // 2. Submit / loading state
     setIsSubmitting(true);
 
-    const formattedTime = `${startTime} – ${endTime}`;
+    const formattedTime = `${String(startTime ?? '')} – ${String(endTime ?? '')}`;
     const parentEvent = availableEvents.find((evt) => evt.id === selectedEventId);
     const resolvedCategory = isCustomCategory
-      ? customCategoryInput.trim()
-      : category || parentEvent?.category || 'General Session';
+      ? String(customCategoryInput ?? '').trim()
+      : String(category ?? parentEvent?.category ?? 'General Session').trim();
 
     const isOnlineMode = deliveryMode === 'online' || deliveryMode === 'hybrid';
     const computedLocation = deliveryMode === 'online'
-      ? (meetingDetails ? `Online (${meetingDetails})` : 'Virtual Session')
-      : location.trim();
+      ? (String(meetingDetails ?? '').trim()
+        ? `Online (${String(meetingDetails ?? '').trim()})`
+        : 'Virtual Session')
+      : String(location ?? '').trim();
+    const safeTitle = String(title ?? '').trim();
+    const safeDescription = String(description ?? '').trim();
+    const safeDate = String(date ?? '').trim();
+    const safeStartTime = String(startTime ?? '').trim();
+    const safeEndTime = String(endTime ?? '').trim();
+    const safeTimezone = String(timezone ?? '').trim();
+    const safeMeetingUrl = String(meetingUrl ?? '').trim();
+    const safeRegistrationDeadline = String(registrationDeadline ?? '').trim();
+    const safeSociety = String(society ?? '').trim();
 
     const newSession: SessionItem = {
       id: initialSession?.id || `sess-${Date.now()}`,
       eventId: selectedEventId,
       parentEventTitle: parentEvent?.title || initialSession?.parentEventTitle || 'Campus Event',
-      title: title.trim(),
-      description: description.trim() || 'No description provided.',
-      date: date.trim(),
+      title: safeTitle,
+      description: safeDescription || 'No description provided.',
+      date: safeDate,
       time: formattedTime,
-      startTime: startTime.trim(),
-      endTime: endTime.trim(),
-      timezone: timezone.trim(),
+      startTime: safeStartTime,
+      endTime: safeEndTime,
+      timezone: safeTimezone,
       location: computedLocation,
       isOnline: isOnlineMode,
-      meetingUrl: isOnlineMode ? meetingUrl.trim() : undefined,
-      meetingDetails: isOnlineMode ? meetingDetails.trim() : undefined,
-      society: society.trim() || parentEvent?.organizer || 'University Society',
+      meetingUrl: isOnlineMode ? safeMeetingUrl : undefined,
+      meeting_links: isOnlineMode
+        ? linkRows
+            .filter((r) => String(r.url ?? '').trim())
+            .map((r) => ({
+              platform: 'other' as const,
+              label: String(r.label ?? '').trim() || null,
+              url: String(r.url ?? '').trim(),
+              public: r.isPublic,
+            }))
+        : undefined,
+      meetingDetails: isOnlineMode ? String(meetingDetails ?? '').trim() : undefined,
+      society: safeSociety || parentEvent?.organizer || 'University Society',
       status: initialSession?.status || 'open',
       capacity: `0 / ${totalSeats} slots filled`,
       totalSeats: Number(totalSeats) || 60,
       seatsRemaining: Number(totalSeats) || 60,
       category: resolvedCategory,
       registrationRequired: registrationRequired,
-      registrationDeadline: registrationDeadline.trim() || undefined,
+      registrationDeadline: safeRegistrationDeadline || undefined,
       isPaid: paymentRequired,
       amount: paymentRequired ? Number(amount) : 0,
+      paymentDetails: paymentRequired
+        ? {
+            method: paymentMethod,
+            accountTitle: accountTitle.trim(),
+            accountNumber: accountNumber.trim(),
+            instructions: paymentInstructions.trim() || undefined,
+          }
+        : undefined,
       resources: initialSession?.resources || [
         {
           id: `res-${Date.now()}`,
-          name: `${title.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}_agenda.pdf`,
+          name: `${safeTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}_agenda.pdf`,
           size: '1.2 MB',
           type: 'pdf',
           category: 'pdf',
@@ -380,6 +556,8 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
               id="session-title"
               type="text"
               value={title}
+              minLength={3}
+              maxLength={200}
               onChange={(e) => {
                 setTitle(e.target.value);
                 if (hasSubmitted) {
@@ -423,7 +601,7 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
                 className="text-xs text-[var(--primary-accent)] hover:underline flex items-center gap-1 cursor-pointer font-medium"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>{isCustomCategory ? 'Use Pre-defined List' : '+ Add Custom Category'}</span>
+                <span>{isCustomCategory ? 'Use Pre-defined List' : 'Add Custom Category'}</span>
               </button>
             </div>
 
@@ -645,24 +823,66 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
             {/* Online Meeting Details */}
             {deliveryMode !== 'in_person' && (
               <div className="space-y-3 pt-1 border-t border-white/[0.06]">
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="session-meeting-url"
-                    className="block font-inter text-xs sm:text-[13px] font-medium text-white"
-                  >
-                    Online Meeting URL (Zoom / Google Meet / Teams) <span className="text-rose-400">*</span>
+                <div className="space-y-2">
+                  <label className="block font-inter text-xs sm:text-[13px] font-medium text-white">
+                    Online meeting links (Zoom / Google Meet / YouTube / Teams) <span className="text-rose-400">*</span>
                   </label>
-                  <div className="relative">
-                    <Video className="w-4 h-4 text-[var(--text-sec-70)] absolute left-3.5 top-3.5" />
-                    <input
-                      id="session-meeting-url"
-                      type="url"
-                      value={meetingUrl}
-                      onChange={(e) => setMeetingUrl(e.target.value)}
-                      placeholder="https://meet.google.com/xyz-abcd-efg"
-                      className="w-full h-11 pl-10 pr-3.5 rounded-xl bg-black/30 border border-white/[0.15] text-[14px] text-white focus:outline-none focus:border-[var(--primary-accent)] focus:ring-1 focus:ring-[var(--primary-accent)]"
-                    />
-                  </div>
+                  {linkRows.map((row, idx) => (
+                    <div key={idx} className="space-y-1.5 rounded-xl border border-white/[0.1] bg-black/20 p-2.5">
+                      <div className="relative">
+                        <Video className="w-4 h-4 text-[var(--text-sec-70)] absolute left-3.5 top-3.5" />
+                        <input
+                          type="url"
+                          value={row.url}
+                          onChange={(e) =>
+                            setLinkRows((rows) => rows.map((r, i) => (i === idx ? { ...r, url: e.target.value } : r)))
+                          }
+                          placeholder={idx === 0 ? 'https://meet.google.com/xyz-abcd-efg' : 'https://youtube.com/live/...'}
+                          className="w-full h-11 pl-10 pr-3.5 rounded-xl bg-black/30 border border-white/[0.15] text-[14px] text-white focus:outline-none focus:border-[var(--primary-accent)] focus:ring-1 focus:ring-[var(--primary-accent)]"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <input
+                          type="text"
+                          value={row.label}
+                          maxLength={60}
+                          onChange={(e) =>
+                            setLinkRows((rows) => rows.map((r, i) => (i === idx ? { ...r, label: e.target.value } : r)))
+                          }
+                          placeholder="Button label (optional), e.g. Live stream"
+                          className="flex-1 min-w-[160px] h-9 px-3 rounded-lg bg-black/30 border border-white/[0.15] text-[13px] text-white"
+                        />
+                        <label className="inline-flex items-center gap-1.5 text-xs text-white cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={row.isPublic}
+                            onChange={(e) =>
+                              setLinkRows((rows) => rows.map((r, i) => (i === idx ? { ...r, isPublic: e.target.checked } : r)))
+                            }
+                          />
+                          Visible to everyone
+                        </label>
+                        {linkRows.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setLinkRows((rows) => rows.filter((_, i) => i !== idx))}
+                            className="text-xs text-rose-300 hover:text-rose-200"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {linkRows.length < 5 && (
+                    <button
+                      type="button"
+                      onClick={() => setLinkRows((rows) => [...rows, { url: '', label: '', isPublic: false }])}
+                      className="text-xs font-medium text-[var(--primary-accent)] hover:underline"
+                    >
+                      + Add another link
+                    </button>
+                  )}
                   {errors.meetingUrl && (
                     <p className="text-xs text-rose-300 font-inter pt-0.5">{errors.meetingUrl}</p>
                   )}
@@ -680,7 +900,7 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
                     type="text"
                     value={meetingDetails}
                     onChange={(e) => setMeetingDetails(e.target.value)}
-                    placeholder="Passcode: SEMS2026, waiting room enabled"
+                    placeholder="Passcode or access instructions"
                     className="w-full h-11 px-3.5 rounded-xl bg-black/30 border border-white/[0.15] text-[14px] text-white focus:outline-none focus:border-[var(--primary-accent)] focus:ring-1 focus:ring-[var(--primary-accent)]"
                   />
                 </div>
@@ -705,13 +925,14 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
             <input
               id="session-seats"
               type="number"
-              min={5}
-              max={1000}
-              step={5}
+              min={1}
+              max={100000}
+              step={1}
               value={totalSeats}
               onChange={(e) => setTotalSeats(Number(e.target.value))}
               className="w-full h-11 px-3.5 rounded-xl bg-black/30 border border-white/[0.15] text-[14px] text-white focus:outline-none focus:border-[var(--primary-accent)] focus:ring-1 focus:ring-[var(--primary-accent)]"
             />
+            {errors.capacity && <p className="text-[11px] text-rose-300">{errors.capacity}</p>}
             <p className="text-[11px] text-[var(--text-sec-70)]">
               Defines admission capacity. System will display available seats and block over-enrollment.
             </p>
@@ -805,7 +1026,7 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
                   htmlFor="session-amount"
                   className="block font-inter text-xs font-medium text-white"
                 >
-                  Registration Fee (in PKR / Rs.) <span className="text-rose-400">*</span>
+                  Registration Fee (Rs.) <span className="text-rose-400">*</span>
                 </label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-3 text-xs font-semibold text-[var(--text-sec-70)]">
@@ -825,6 +1046,79 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
                 {errors.amount && (
                   <p className="text-xs text-rose-300 font-inter pt-0.5">{errors.amount}</p>
                 )}
+              </div>
+            )}
+
+            {/* Payment account details */}
+            {paymentRequired && (
+              <div className="pt-2 space-y-3 animate-fadeIn">
+                <span className="block font-inter text-xs font-medium text-white">Payment details</span>
+                <div className="space-y-1.5">
+                  <label htmlFor="session-payment-method" className="block font-inter text-xs text-[var(--text-sec-70)]">
+                    Payment method
+                  </label>
+                  <select
+                    id="session-payment-method"
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full h-11 px-3.5 rounded-xl bg-black/40 border border-white/20 text-sm text-white focus:outline-none focus:border-[var(--primary-accent)]"
+                  >
+                    {PAYMENT_METHODS.map((method) => (
+                      <option key={method} value={method} className="bg-slate-900">{method}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="session-account-title" className="block font-inter text-xs text-[var(--text-sec-70)]">
+                    Account title <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    id="session-account-title"
+                    type="text"
+                    maxLength={100}
+                    value={accountTitle}
+                    onChange={(e) => setAccountTitle(e.target.value)}
+                    placeholder="e.g. Robotics & AI Society"
+                    className="w-full h-11 px-3.5 rounded-xl bg-black/40 border border-white/20 text-sm text-white focus:outline-none focus:border-[var(--primary-accent)]"
+                  />
+                  {errors.accountTitle && (
+                    <p className="text-xs text-rose-300 font-inter pt-0.5">{errors.accountTitle}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="session-account-number" className="block font-inter text-xs text-[var(--text-sec-70)]">
+                    Account number <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    id="session-account-number"
+                    type="text"
+                    maxLength={34}
+                    value={accountNumber}
+                    onChange={(e) => setAccountNumber(e.target.value)}
+                    placeholder="e.g. 0300-1234567 or PK36 SCBL 0000 0011 2345 6702"
+                    className="w-full h-11 px-3.5 rounded-xl bg-black/40 border border-white/20 text-sm text-white focus:outline-none focus:border-[var(--primary-accent)]"
+                  />
+                  {errors.accountNumber && (
+                    <p className="text-xs text-rose-300 font-inter pt-0.5">{errors.accountNumber}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="session-payment-instructions" className="block font-inter text-xs text-[var(--text-sec-70)]">
+                    Instructions (optional)
+                  </label>
+                  <textarea
+                    id="session-payment-instructions"
+                    rows={3}
+                    maxLength={500}
+                    value={paymentInstructions}
+                    onChange={(e) => setPaymentInstructions(e.target.value)}
+                    placeholder="e.g. Write your roll number in the payment reference."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/20 text-sm text-white focus:outline-none focus:border-[var(--primary-accent)]"
+                  />
+                  {errors.paymentInstructions && (
+                    <p className="text-xs text-rose-300 font-inter pt-0.5">{errors.paymentInstructions}</p>
+                  )}
+                </div>
               </div>
             )}
           </div>

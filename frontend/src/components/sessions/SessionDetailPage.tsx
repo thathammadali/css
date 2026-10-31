@@ -1,3 +1,4 @@
+import { getFeeStatus } from '../../utils/feeStatus';
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
@@ -7,8 +8,7 @@ import {
   ClipboardList,
   ShieldCheck,
   Edit3,
-  Lock,
-  DollarSign,
+  Banknote,
   CheckCircle2,
   AlertCircle,
   Layers,
@@ -18,8 +18,6 @@ import {
   Video,
   Tag,
   ExternalLink,
-  KeyRound,
-  Radio,
   Download,
 } from 'lucide-react';
 import {
@@ -30,20 +28,17 @@ import {
   SessionComment,
   SessionTask,
   RegistrantItem,
-  RoomAccessValidationResponse,
 } from '../../types';
 import { SessionResourcesSection } from './SessionResourcesSection';
 import { SessionCommentsSection } from './SessionCommentsSection';
 import { SessionTasksSection } from './SessionTasksSection';
-import { RoomCodeInputDialog } from './RoomCodeInputDialog';
-import { SessionRoomView } from './SessionRoomView';
-import { SessionRoomAdminPanel } from './SessionRoomAdminPanel';
-import { roomAccessService } from '../../services/roomAccessService';
 import { eventService } from '../../services/eventService';
-import { INITIAL_REGISTRANTS } from '../../data/mockRegistrations';
-import { INITIAL_ATTENDANCE_RECORDS } from '../../data/mockAttendance';
-import { eligibilityService } from '../../services/eligibilityService';
 import { getSessionCapacity } from '../../utils/capacityHelper';
+import { registrationApi } from '../../services/registrationApi';
+import { validateReceiptFile } from '../../utils/validators';
+import { PaymentDetailsCard } from '../registration/PaymentDetailsCard';
+import { formatDeadline } from '../../utils/formatDeadline';
+import MeetingLinks from '../MeetingLinks';
 
 interface SessionDetailPageProps {
   session: SessionItem;
@@ -52,6 +47,7 @@ interface SessionDetailPageProps {
   currentUserEmail?: string;
   currentUserName?: string;
   registrant?: RegistrantItem;
+  registrants?: RegistrantItem[];
   onBack: () => void;
   onNavigateToAuth: () => void;
   onOpenRegistration?: (session: SessionItem) => void;
@@ -60,6 +56,7 @@ interface SessionDetailPageProps {
   onNavigateToParentEvent?: (eventId: string) => void;
   onEditSession?: (session: SessionItem) => void;
   onUpdateSession?: (updatedSession: SessionItem) => void;
+  onReloadRegistrants?: () => Promise<void>;
   onNotify: (msg: string) => void;
 }
 
@@ -70,6 +67,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   currentUserEmail,
   currentUserName,
   registrant,
+  registrants = [],
   onBack,
   onNavigateToAuth,
   onOpenRegistration,
@@ -78,9 +76,13 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   onNavigateToParentEvent,
   onEditSession,
   onUpdateSession,
+  onReloadRegistrants,
   onNotify,
 }) => {
   const [registered, setRegistered] = useState(isRegistered);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
+  const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
 
   // Synchronize registered status when prop changes or user navigates between sessions
   useEffect(() => {
@@ -88,51 +90,93 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   }, [isRegistered, session.id]);
 
   const [activeTab, setActiveTab] = useState<
-    'details' | 'resources' | 'tasks' | 'discussion' | 'attendance' | 'room-governance'
+    'details' | 'resources' | 'tasks' | 'discussion' | 'attendance'
   >('details');
-
-  // Room access states (authoritative in-memory, never LocalStorage)
-  const [isRoomCodeModalOpen, setIsRoomCodeModalOpen] = useState(false);
-  const [activeRoomData, setActiveRoomData] = useState<{
-    sessionToken: string;
-    room: NonNullable<RoomAccessValidationResponse['room']>;
-  } | null>(null);
 
   // Derive registrant if not passed explicitly
   const effectiveRegistrant =
     registrant ||
-    INITIAL_REGISTRANTS.find(
+    registrants.find(
       (r) =>
         r.sessionId === session.id &&
         (r.email === currentUserEmail ||
           r.primaryEmail === currentUserEmail ||
-          (currentUserEmail?.includes('jordan') && r.name.toLowerCase().includes('jordan')))
+          (currentUserEmail?.includes('jordan') && r.name.toLowerCase().includes('jordan')) ||
+          (currentRole !== 'admin' && currentRole !== 'super_admin' && registered))
     );
 
-  const room = roomAccessService.getOrCreateRoomForSession(session);
+  const feeStatus = getFeeStatus(effectiveRegistrant, !!session.isPaid);
   const capacityInfo = getSessionCapacity(session);
   const isSessionClosed = session.status === 'closed';
   const isPaidSession = !!session.isPaid;
   const isWaitlisted =
     registered &&
     (effectiveRegistrant?.lifecycleStatus === 'WAITLISTED' || effectiveRegistrant?.isWaitlisted);
-  const isPaymentPending = !isWaitlisted && isPaidSession && effectiveRegistrant?.status === 'pending';
-  const isPaymentRejected = !isWaitlisted && isPaidSession && effectiveRegistrant?.status === 'rejected';
+  const isPaymentPending =
+    !isWaitlisted && effectiveRegistrant?.backendStatus === 'PAYMENT_PENDING';
+  const isPaymentRejected =
+    !isWaitlisted && effectiveRegistrant?.backendStatus === 'PAYMENT_REJECTED';
+  const isCancelled = effectiveRegistrant?.backendStatus === 'CANCELLED';
   const isRegistrationPending =
     !isWaitlisted &&
     registered &&
     (effectiveRegistrant?.lifecycleStatus === 'FORM_IN_PROGRESS' ||
       effectiveRegistrant?.lifecycleStatus === 'SUBMITTED');
-  const isRoomLocked = room.status === 'revoked' || room.status === 'locked';
-
-  const sessionRegistrants = INITIAL_REGISTRANTS.filter(
+  const sessionRegistrants = registrants.filter(
     (r) => r.sessionId === session.id
   );
+
+  const handleAttendance = async (registration: RegistrantItem, attended: boolean) => {
+    try {
+      await registrationApi.setAttendance(registration.id, attended);
+      await onReloadRegistrants?.();
+      onNotify(attended ? 'Registration marked attended.' : 'Attendance cleared.');
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to update attendance.');
+    }
+  };
+
+  const handleMarkAllAttended = async () => {
+    const confirmed = sessionRegistrants.filter((registration) => registration.backendStatus === 'CONFIRMED');
+    if (confirmed.length === 0) {
+      onNotify('No confirmed registrations are available.');
+      return;
+    }
+    try {
+      await registrationApi.setSessionAttendance(session.id, confirmed.map((registration) => registration.id), true);
+      await onReloadRegistrants?.();
+      onNotify('All confirmed registrations marked attended.');
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to update attendance.');
+    }
+  };
+
+  const handleReceiptUpload = async () => {
+    if (!effectiveRegistrant || !receiptFile) return;
+    const error = validateReceiptFile(receiptFile);
+    if (error) {
+      setReceiptError(error);
+      onNotify(error);
+      return;
+    }
+    setIsUploadingReceipt(true);
+    try {
+      await registrationApi.uploadReceipt(effectiveRegistrant.id, receiptFile);
+      await onReloadRegistrants?.();
+      setReceiptFile(null);
+      setReceiptError(null);
+      onNotify('Receipt uploaded. Your seat is confirmed only after an admin approves it.');
+    } catch (uploadError: any) {
+      onNotify(uploadError?.message || 'Failed to upload receipt.');
+    } finally {
+      setIsUploadingReceipt(false);
+    }
+  };
 
   const getBadgeStyle = (status: SessionStatus) => {
     if (session.deliveryStatus === 'LIVE') {
       return {
-        label: 'LIVE NOW in Virtual Room',
+        label: 'LIVE NOW in Virtual Meeting',
         classes: 'bg-rose-500/25 text-rose-300 border border-rose-500/40 shadow-lg shadow-rose-950/40',
         dot: 'bg-rose-500 animate-ping',
       };
@@ -256,69 +300,6 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
     }
   };
 
-  const handleEnterAsHost = async () => {
-    try {
-      const res = await roomAccessService.requestHostAccess(
-        session,
-        currentRole,
-        currentUserEmail || (currentRole === 'super_admin' ? 'dean.taylor@university.edu.pk' : 'admin@university.edu.pk'),
-        currentUserName || (currentRole === 'super_admin' ? 'Prof. Dean Taylor' : 'Alex Morgan')
-      );
-      if (res.success && res.sessionToken && res.room) {
-        setActiveRoomData({
-          sessionToken: res.sessionToken,
-          room: res.room,
-        });
-        onNotify(`Joined "${res.room.roomName}" with Host Privileges!`);
-      } else {
-        onNotify(res.error || 'Failed to initialize host access.');
-      }
-    } catch {
-      onNotify('Could not connect to host session.');
-    }
-  };
-
-  if (activeRoomData) {
-    return (
-      <SessionRoomView
-        session={session}
-        room={activeRoomData.room}
-        sessionToken={activeRoomData.sessionToken}
-        currentRole={currentRole}
-        userName={
-          currentUserName ||
-          (currentRole === 'super_admin'
-            ? 'Prof. Dean Taylor'
-            : currentRole === 'admin'
-            ? 'Alex Morgan'
-            : 'Jordan Lee')
-        }
-        userEmail={currentUserEmail || 'participant@university.edu.pk'}
-        registrant={effectiveRegistrant}
-        onLeaveRoom={() => {
-          roomAccessService.leaveRoom(activeRoomData.sessionToken);
-          setActiveRoomData(null);
-          // Refresh session to reflect any delivery status updates from the meeting
-          const updated = eventService.getSessionById(session.id);
-          if (updated && onUpdateSession) {
-            onUpdateSession(updated.session);
-          }
-          onNotify(`Left room "${activeRoomData.room.roomName}".`);
-        }}
-        onAttendanceChecked={(sessId) => {
-          if (effectiveRegistrant) {
-            effectiveRegistrant.attendanceCompleted = true;
-          }
-          const updated = eventService.getSessionById(sessId);
-          if (updated && onUpdateSession) {
-            onUpdateSession(updated.session);
-          }
-        }}
-        onNotify={onNotify}
-      />
-    );
-  }
-
   return (
     <div id="session-detail-page" className="w-full space-y-6 animate-fadeIn pb-16">
       {/* Subheader */}
@@ -391,7 +372,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
 
             {session.isPaid ? (
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-inter font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                <DollarSign className="w-3 h-3" />
+                <Banknote className="w-3 h-3" />
                 <span>Ticket: Rs. {session.amount}</span>
               </span>
             ) : (
@@ -435,7 +416,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
               <span className="text-sm font-medium text-white">{session.date}</span>
               {session.registrationDeadline && (
                 <span className="text-[10px] text-amber-300/90 block font-mono">
-                  Deadline: {session.registrationDeadline}
+                  Deadline: {formatDeadline(session.registrationDeadline)}
                 </span>
               )}
             </div>
@@ -465,17 +446,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                 {session.isOnline ? 'Online / Hybrid Meeting' : 'Physical Venue'}
               </span>
               <span className="text-sm font-medium text-white">{session.location}</span>
-              {session.meetingUrl && (
-                <a
-                  href={session.meetingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-[var(--primary-accent)] hover:underline inline-flex items-center gap-1 font-medium mt-0.5"
-                >
-                  <span>Join Meeting Link</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
+              <MeetingLinks session={session} className="mt-1" />
             </div>
           </div>
         </div>
@@ -493,13 +464,13 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
         <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-[var(--accent-10)] border border-[var(--accent-25)]">
           <div className="space-y-0.5 text-center sm:text-left">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--primary-accent)] block">
-              {isSuperAdminOrAdmin ? 'Host / Session Management' : 'Registration Status'}
+              {isSuperAdminOrAdmin ? 'Session Management' : 'Registration Status'}
             </span>
             <p className="text-sm text-white font-medium">
               {isSuperAdminOrAdmin
                 ? session.deliveryStatus === 'LIVE'
-                  ? '🎙️ Meeting is currently LIVE! Host broadcasting active.'
-                  : 'Authorized Session Host privileges granted for this room.'
+                  ? '🎙️ Meeting is currently LIVE!'
+                  : 'Authorized session management access granted.'
                 : isWaitlisted
                 ? `⏳ You are on the Waitlist (Queue #${effectiveRegistrant?.waitlistPosition || 1})`
                 : registered
@@ -513,30 +484,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
-            {isSuperAdminOrAdmin ? (
-              /* Authorized Host Direct Access */
-              <div className="flex flex-col sm:flex-row items-center gap-2.5">
-                <span className="px-3 py-1.5 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-semibold flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-purple-300" />
-                  <span>Authorized Session Host</span>
-                </span>
-
-                <button
-                  id="btn-host-enter-room"
-                  type="button"
-                  onClick={handleEnterAsHost}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white font-inter font-semibold text-xs sm:text-sm transition-all cursor-pointer shadow-lg shadow-purple-900/40 flex items-center justify-center gap-2"
-                  title="Enter virtual meeting room with full Host / Admin privileges"
-                >
-                  <Radio className="w-4 h-4 text-purple-200 animate-pulse" />
-                  <span>
-                    {session.deliveryStatus === 'LIVE'
-                      ? 'Join Live Room as Host'
-                      : 'Launch Virtual Meeting Room'}
-                  </span>
-                </button>
-              </div>
-            ) : !registered ? (
+            {!registered ? (
               <button
                 type="button"
                 onClick={handleRegisterClick}
@@ -568,6 +516,10 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                   You will be auto-notified if an enrolled seat becomes available
                 </span>
               </div>
+            ) : isCancelled ? (
+              <span className="px-3.5 py-2 rounded-xl bg-white/10 text-white/60 border border-white/20 text-xs font-semibold">
+                Registration Cancelled
+              </span>
             ) : isSessionClosed || session.deliveryStatus === 'COMPLETED' ? (
               <div className="flex items-center gap-2">
                 <span className="px-3.5 py-2 rounded-xl bg-white/10 text-white/70 border border-white/20 text-xs font-semibold flex items-center justify-center gap-1.5">
@@ -588,8 +540,28 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                   <span>Payment Pending Verification</span>
                 </span>
                 <span className="text-[11px] font-mono text-amber-200/80">
-                  Room access locked until payment is approved
+                  Meeting access becomes available after payment approval
                 </span>
+                <PaymentDetailsCard details={session.paymentDetails} isPaid={session.isPaid} />
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    setReceiptFile(file);
+                    setReceiptError(file ? validateReceiptFile(file) : null);
+                  }}
+                  className="text-[11px] text-white/70"
+                />
+                <button
+                  type="button"
+                  disabled={!receiptFile || isUploadingReceipt}
+                  onClick={handleReceiptUpload}
+                  className="px-3 py-1.5 rounded-lg bg-[var(--primary-accent)] text-[11px] text-white disabled:opacity-50"
+                >
+                  {isUploadingReceipt ? 'Uploading...' : 'Upload receipt'}
+                </button>
+                {receiptError && <span className="text-[11px] text-rose-300">{receiptError}</span>}
               </div>
             ) : isPaymentRejected ? (
               <div className="flex flex-col sm:items-end gap-1">
@@ -598,44 +570,43 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                   <span>Payment Slip Rejected</span>
                 </span>
                 <span className="text-[11px] text-rose-200/80">
-                  Please resubmit your receipt in My Registrations
+                  {effectiveRegistrant?.receiptRejectedReason || 'Please upload a new receipt.'}
                 </span>
-              </div>
-            ) : isRoomLocked ? (
-              <div className="flex flex-col sm:items-end gap-1">
-                <span className="px-3.5 py-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center justify-center gap-1.5">
-                  <Lock className="w-4 h-4 text-rose-400" />
-                  <span>Room Access Not Available</span>
-                </span>
-                <span className="text-[11px] text-rose-200/80">
-                  Access code currently locked or revoked by host
-                </span>
+                <PaymentDetailsCard details={session.paymentDetails} isPaid={session.isPaid} />
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  aria-label="Upload new receipt"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    setReceiptFile(file);
+                    setReceiptError(file ? validateReceiptFile(file) : null);
+                  }}
+                  className="text-[11px] text-white/70"
+                />
+                <button
+                  type="button"
+                  disabled={!receiptFile || isUploadingReceipt}
+                  onClick={handleReceiptUpload}
+                  className="px-3 py-1.5 rounded-lg bg-[var(--primary-accent)] text-[11px] text-white disabled:opacity-50"
+                >
+                  {isUploadingReceipt ? 'Uploading...' : 'Upload new receipt'}
+                </button>
+                {receiptError && <span className="text-[11px] text-rose-300">{receiptError}</span>}
               </div>
             ) : (
-              /* Participant is eligible! Payment approved (or free) and room active */
               <div className="flex flex-col sm:flex-row items-center gap-2.5">
                 <span className="px-3.5 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center justify-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Enrolled & Confirmed</span>
                 </span>
-
-                <button
-                  id="btn-enter-session-room"
-                  type="button"
-                  onClick={() => setIsRoomCodeModalOpen(true)}
-                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-inter font-medium text-xs sm:text-sm transition-all cursor-pointer shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2"
-                  title="Enter the live session room using unique access code"
-                >
-                  <KeyRound className="w-4 h-4 text-purple-200" />
-                  <span>Enter Session Room</span>
-                </button>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Tabs for Resources, Tasks, Discussion, Attendance, and Room Governance */}
+      {/* Tabs for Resources, Tasks, Discussion, and Attendance */}
       <div className="space-y-4">
         <div className="flex items-center gap-2 border-b border-white/[0.10] pb-2 overflow-x-auto">
           {[
@@ -646,7 +617,6 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
             ...(isSuperAdminOrAdmin
               ? [
                   { id: 'attendance' as const, label: `Attendance & Eligibility (${sessionRegistrants.length})` },
-                  { id: 'room-governance' as const, label: 'Room Access & Codes' },
                 ]
               : []),
           ].map((tab) => (
@@ -682,14 +652,33 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                     <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     <span>1. Registration Confirmed</span>
                   </div>
-                  <div className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-emerald-200 flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>2. Fee {session.isPaid ? 'Approved' : 'Free Pass'}</span>
+                  <div
+                    className={`p-2 rounded-lg border flex items-center gap-1.5 ${
+                      feeStatus.approved
+                        ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                        : feeStatus.tone === 'danger'
+                        ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+                        : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                    }`}
+                  >
+                    {feeStatus.approved ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Clock className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                    <span>2. Fee: {feeStatus.label}</span>
                   </div>
-                  <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-200 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span>3. Attendance Logged</span>
-                  </div>
+                  {effectiveRegistrant?.attended ? (
+                    <div className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-emerald-200 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>3. Attendance Logged</span>
+                    </div>
+                  ) : (
+                    <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-200 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>3. Attendance Logged</span>
+                    </div>
+                  )}
                   <div className="p-2 rounded-lg bg-cyan-950/40 border border-cyan-500/40 text-cyan-200 flex items-center gap-1.5">
                     <CheckSquare className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                     <span>4. Task On Time</span>
@@ -785,7 +774,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 animate-spin">
-                          <Radio className="w-5 h-5" />
+                          <Video className="w-5 h-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
@@ -896,6 +885,13 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                 </p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={handleMarkAllAttended}
+              className="px-3 py-2 rounded-lg bg-emerald-600/80 text-white text-xs"
+            >
+              Mark all confirmed as attended
+            </button>
 
             {/* Mobile Screens (sm:hidden): Responsive Cards View */}
             <div className="sm:hidden space-y-3">
@@ -905,13 +901,8 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                 </div>
               ) : (
                 sessionRegistrants.map((reg) => {
-                  const elig = eligibilityService.evaluateCertificateEligibility(reg, { session });
-                  const att = INITIAL_ATTENDANCE_RECORDS.find(
-                    (a) =>
-                      a.sessionId === session.id &&
-                      (a.participantId === reg.id ||
-                        (reg.email && a.participantEmail.toLowerCase() === reg.email.toLowerCase()))
-                  );
+                  const elig = { eligible: Boolean(reg.attended), checks: { registrationConfirmed: reg.backendStatus === 'CONFIRMED', paymentApproved: reg.backendStatus === 'CONFIRMED', assignmentCompleted: true } };
+                  const att = reg.attended ? { verificationStatus: 'verified', thresholdMet: true, durationMinutes: 0, verifiedBy: 'Admin' } : null;
 
                   return (
                     <div
@@ -937,6 +928,14 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                           {elig.eligible ? '✓ Eligible' : 'Ineligible'}
                         </span>
                       </div>
+                      <button
+                        type="button"
+                        disabled={reg.backendStatus !== 'CONFIRMED'}
+                        onClick={() => handleAttendance(reg, !reg.attended)}
+                        className="px-2.5 py-1 rounded-lg bg-cyan-600/70 text-white text-[11px] disabled:opacity-40"
+                      >
+                        {reg.attended ? 'Clear attendance' : 'Mark attended'}
+                      </button>
 
                       {/* 4 Status Checkpoints Grid */}
                       <div className="grid grid-cols-2 gap-2 text-[11px] p-2.5 rounded-xl bg-black/30 border border-white/[0.06]">
@@ -975,7 +974,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                               </span>
                             ) : att.verificationStatus === 'in_session' ? (
                               <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-medium">
-                                <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
+                                <Video className="w-3 h-3 text-cyan-400 animate-pulse" />
                                 <span>In Session ({att.durationMinutes}m live)</span>
                               </span>
                             ) : (
@@ -1027,16 +1026,21 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                     </tr>
                   ) : (
                     sessionRegistrants.map((reg) => {
-                      const elig = eligibilityService.evaluateCertificateEligibility(reg, { session });
-                      const att = INITIAL_ATTENDANCE_RECORDS.find(
-                        (a) =>
-                          a.sessionId === session.id &&
-                          (a.participantId === reg.id ||
-                            (reg.email && a.participantEmail.toLowerCase() === reg.email.toLowerCase()))
-                      );
+                      const elig = { eligible: Boolean(reg.attended), checks: { registrationConfirmed: reg.backendStatus === 'CONFIRMED', paymentApproved: reg.backendStatus === 'CONFIRMED', assignmentCompleted: true } };
+                      const att = reg.attended ? { verificationStatus: 'verified', thresholdMet: true, durationMinutes: 0, verifiedBy: 'Admin' } : null;
 
                       return (
                         <tr key={reg.id} className="hover:bg-white/[0.02]">
+                          <td className="py-3 px-3">
+                            <button
+                              type="button"
+                              disabled={reg.backendStatus !== 'CONFIRMED'}
+                              onClick={() => handleAttendance(reg, !reg.attended)}
+                              className="px-2 py-1 rounded bg-cyan-600/70 text-white text-[10px] disabled:opacity-40"
+                            >
+                              {reg.attended ? 'Clear' : 'Mark attended'}
+                            </button>
+                          </td>
                           <td className="py-3 px-3">
                             <div className="font-medium text-white">{reg.name}</div>
                             <div className="text-[11px] font-mono text-white/50">{reg.rollNumber}</div>
@@ -1088,7 +1092,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                               ) : att.verificationStatus === 'in_session' ? (
                                 <div className="space-y-0.5">
                                   <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-medium">
-                                    <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
+                                    <Video className="w-3 h-3 text-cyan-400 animate-pulse" />
                                     <span>In Session</span>
                                   </span>
                                   <div className="text-[10px] font-mono text-cyan-300/80">
@@ -1142,39 +1146,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
           </div>
         )}
 
-        {/* Tab: Room Access & Governance (Admin / Super Admin) */}
-        {activeTab === 'room-governance' && isSuperAdminOrAdmin && (
-          <SessionRoomAdminPanel
-            session={session}
-            currentRole={currentRole}
-            actorName={
-              currentUserName ||
-              (currentRole === 'super_admin' ? 'Prof. Dean Taylor' : 'Alex Morgan')
-            }
-            onNotify={onNotify}
-          />
-        )}
       </div>
-
-      {/* Room Access Code Input Dialog */}
-      <RoomCodeInputDialog
-        session={session}
-        currentUserEmail={
-          currentUserEmail ||
-          (currentRole === 'guest'
-            ? 'sarah.connor@industrytech.io'
-            : currentRole === 'student'
-            ? 'student@university.edu.pk'
-            : 'admin@university.edu.pk')
-        }
-        registrant={effectiveRegistrant}
-        isOpen={isRoomCodeModalOpen}
-        onClose={() => setIsRoomCodeModalOpen(false)}
-        onAuthorized={(authData) => {
-          setActiveRoomData(authData);
-        }}
-        onNotify={onNotify}
-      />
     </div>
   );
 };

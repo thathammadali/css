@@ -27,6 +27,7 @@ interface SessionsListPageProps {
 
 import { EmptyState } from '../EmptyState';
 import { SkeletonState } from '../SkeletonState';
+import MeetingLinks from '../MeetingLinks';
 
 export const SessionsListPage: React.FC<SessionsListPageProps> = ({
   sessions,
@@ -125,7 +126,7 @@ export const SessionsListPage: React.FC<SessionsListPageProps> = ({
               className="hidden sm:inline-flex items-center gap-2 px-4 h-[42px] rounded-[16px] bg-[var(--primary-accent)] hover:brightness-110 active:scale-[0.99] text-white font-inter font-medium text-[13px] transition-all cursor-pointer shadow-lg select-none"
             >
               <Plus className="w-4 h-4" />
-              <span>+ New session</span>
+              <span>New session</span>
             </button>
           )}
         </div>
@@ -256,20 +257,7 @@ export const SessionsListPage: React.FC<SessionsListPageProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    {session.meeting_link && (
-                      <a
-                        href={session.meeting_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-white text-[11px] font-medium transition-all"
-                        title="Open Confirmed Meeting Link"
-                      >
-                        <Video className="w-3 h-3 text-emerald-400" />
-                        <span>Meeting</span>
-                        <ExternalLink className="w-2.5 h-2.5 opacity-70" />
-                      </a>
-                    )}
+                    <MeetingLinks session={session} compact />
 
                     <span className="inline-flex items-center gap-1 text-[var(--primary-accent)] font-medium group-hover:translate-x-0.5 transition-transform">
                       <span>Details</span>
@@ -320,7 +308,7 @@ export const SessionsListPage: React.FC<SessionsListPageProps> = ({
           aria-label="Create new session"
         >
           <Plus className="w-5 h-5" />
-          <span>+ New session</span>
+          <span>New session</span>
         </button>
       )}
     </div>

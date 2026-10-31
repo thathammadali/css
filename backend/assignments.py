@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
@@ -12,7 +13,7 @@ from payments import detect_file_type, MAX_SIZE  # reusing your existing byte-si
 
 router = APIRouter(tags=["assignments"])
 
-UPLOAD_DIR = "uploads/assignments"
+UPLOAD_DIR = str(Path(__file__).parent / "uploads" / "assignments")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_SUBMISSION_TYPES = {"pdf", "jpg", "png"}  # extend later if you want docx/zip etc.

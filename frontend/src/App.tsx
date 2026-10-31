@@ -19,7 +19,6 @@ import { PaymentReviewPage } from './components/reviews/PaymentReviewPage';
 import { CertificatesPage } from './components/certificates/CertificatesPage';
 import { UsersPage } from './components/users/UsersPage';
 import { ProfilePage } from './components/profile/ProfilePage';
-import { SessionRoomsHubPage } from './components/sessions/SessionRoomsHubPage';
 import { AccessDeniedPage } from './components/AccessDeniedPage';
 import { parseHash, isRouteProtected, getRequiredRoleForRoute } from './utils/router';
 import { useTheme } from './context/ThemeContext';
@@ -35,31 +34,31 @@ import {
   CertificateItem,
   RegistrationFormConfig,
 } from './types';
-import { INITIAL_REGISTRANTS } from './data/mockRegistrations';
-import { INITIAL_CERTIFICATES } from './data/mockCertificates';
 import { DEFAULT_REGISTRATION_FORM } from './data/mockForms';
-import { identifyRoleFromEmail } from './utils/roleUtils';
+import { getRoleDisplayName, identifyRoleFromEmail } from './utils/roleUtils';
+import { DEMO_MODE } from './config';
 import { userService } from './services/userService';
 import { eventService } from './services/eventService';
 import { formService } from './services/formService';
-import { eventsApi } from './services/apiClient';
+import { apiFetch, eventsApi, clearStoredSession, getStoredAuthToken } from './services/apiClient';
+import { registrationApi } from './services/registrationApi';
 
 const STORAGE_LOGIN_KEY = 'sems_is_logged_in';
-const STORAGE_REGISTRANTS_KEY = 'sems_registrants';
-const STORAGE_CERTIFICATES_KEY = 'sems_certificates';
 const STORAGE_ACTIVE_SESSION_KEY = 'sems_active_session';
 const STORAGE_ACTIVE_TAB_KEY = 'sems_active_tab';
 const STORAGE_ACTIVE_SCREEN_KEY = 'sems_active_screen';
 
 export default function App() {
-  // User auth state with lazy initializers from localStorage (F5 survival)
+  // User auth state with lazy initializers from sessionStorage (survives F5, not a closed tab)
   const [user, setUser] = useState<AuthUser | null>(() => {
     try {
-      const savedSession = localStorage.getItem(STORAGE_ACTIVE_SESSION_KEY);
-      const isLoggedIn = localStorage.getItem(STORAGE_LOGIN_KEY) === 'true';
+      const savedSession = sessionStorage.getItem(STORAGE_ACTIVE_SESSION_KEY);
+      const isLoggedIn = sessionStorage.getItem(STORAGE_LOGIN_KEY) === 'true';
       if (isLoggedIn && savedSession) {
         const parsedUser: AuthUser = JSON.parse(savedSession);
         if (parsedUser && (parsedUser.email || parsedUser.primaryEmail)) {
+          if (!DEMO_MODE && !parsedUser.isBackendConnected) return null;
+          if (parsedUser.isBackendConnected && !getStoredAuthToken()) return null;
           return parsedUser;
         }
       }
@@ -71,11 +70,15 @@ export default function App() {
 
   const [currentRole, setCurrentRole] = useState<DashboardRole>(() => {
     try {
-      const savedSession = localStorage.getItem(STORAGE_ACTIVE_SESSION_KEY);
-      const isLoggedIn = localStorage.getItem(STORAGE_LOGIN_KEY) === 'true';
+      const savedSession = sessionStorage.getItem(STORAGE_ACTIVE_SESSION_KEY);
+      const isLoggedIn = sessionStorage.getItem(STORAGE_LOGIN_KEY) === 'true';
       if (isLoggedIn && savedSession) {
         const parsedUser: AuthUser = JSON.parse(savedSession);
         if (parsedUser && (parsedUser.email || parsedUser.primaryEmail)) {
+          if (!DEMO_MODE && !parsedUser.isBackendConnected) return 'guest';
+          if (parsedUser.isBackendConnected) {
+            return getStoredAuthToken() ? ((parsedUser.role as DashboardRole) || 'student') : 'guest';
+          }
           const identified = identifyRoleFromEmail(parsedUser.primaryEmail || parsedUser.email);
           return identified.dashboardRole;
         }
@@ -102,23 +105,27 @@ export default function App() {
   // Authoritative Event hierarchy state: Event -> Multiple Sessions
   const [events, setEvents] = useState<EventItem[]>(() => eventService.getEvents());
 
-  // Public event browsing: Fetch live events from backend tunnel (guests can browse without token)
+  // Live events from the backend. Re-runs on login/logout, when the tab regains focus, and every 60 s.
   useEffect(() => {
     let isMounted = true;
-    eventsApi
-      .getEvents()
-      .then((remoteEvents) => {
-        if (isMounted && remoteEvents && remoteEvents.length > 0) {
-          setEvents(remoteEvents);
-        }
-      })
-      .catch(() => {
-        // Fallback to local mock data
+    const load = () =>
+      eventService.refreshFromBackend().then((ok) => {
+        if (ok && isMounted) setEvents(eventService.getEvents());
       });
+    load();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', load);
+    const timer = window.setInterval(load, 60000);
     return () => {
       isMounted = false;
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', load);
+      window.clearInterval(timer);
     };
-  }, []);
+  }, [user?.primaryEmail]);
 
   // Derived visible events & sessions respecting Event lifecycle states
   const visibleEvents = useMemo(() => {
@@ -129,54 +136,44 @@ export default function App() {
     return visibleEvents.flatMap((e) => e.sessions);
   }, [visibleEvents]);
 
-  // Shared registrations state with localStorage persistence
-  const [registrants, setRegistrants] = useState<RegistrantItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_REGISTRANTS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed to load registrants from localStorage', e);
-    }
-    return INITIAL_REGISTRANTS;
-  });
+  const [registrants, setRegistrants] = useState<RegistrantItem[]>([]);
 
-  // Shared certificates state with localStorage persistence
-  const [certificates, setCertificates] = useState<CertificateItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_CERTIFICATES_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed to load certificates from localStorage', e);
-    }
-    return INITIAL_CERTIFICATES;
-  });
+  const [certificates, setCertificates] = useState<CertificateItem[]>([]);
 
   // Dynamic Registration Form Configuration configured by Head/Admin (Preserved across versions)
   const [formConfig, setFormConfig] = useState<RegistrationFormConfig>(() => formService.getActiveForm());
 
-  // Auto-sync registrants to localStorage whenever updated
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_REGISTRANTS_KEY, JSON.stringify(registrants));
-    } catch (e) {
-      console.warn('Failed to save registrants to localStorage', e);
+  const reloadRegistrants = useCallback(async () => {
+    if (!user?.isBackendConnected || !getStoredAuthToken()) {
+      setRegistrants([]);
+      return;
     }
-  }, [registrants]);
 
-  // Auto-sync certificates to localStorage whenever updated
-  useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify(certificates));
-    } catch (e) {
-      console.warn('Failed to save certificates to localStorage', e);
+      if (currentRole === 'admin' || currentRole === 'super_admin') {
+        const all = await Promise.all(
+          eventService
+            .getEvents()
+            .flatMap((event) => event.sessions || [])
+            .map((session) => registrationApi.forSession(session.id))
+        );
+        setRegistrants(all.flat());
+      } else {
+        setRegistrants(await registrationApi.mine());
+      }
+    } catch (error: any) {
+      setRegistrants([]);
+      showNotification(error?.message || 'Failed to load registrations.');
     }
-  }, [certificates]);
+  }, [currentRole, sessions, user?.isBackendConnected]);
+
+  useEffect(() => {
+    reloadRegistrants();
+    const onFocus = () => reloadRegistrants();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [reloadRegistrants]);
+
 
   // Map navigation tabs to hash routes
   const tabToHash = (tab: NavTab): string => {
@@ -185,8 +182,6 @@ export default function App() {
         return '#/home';
       case 'sessions':
         return '#/sessions';
-      case 'session-room':
-        return '#/session-room';
       case 'registrants':
       case 'reviews':
         return '#/registrants';
@@ -352,11 +347,6 @@ export default function App() {
         return;
       }
 
-      if (path === '/session-room' || path === '/session-rooms' || path === '/rooms') {
-        setCurrentTab('session-room');
-        return;
-      }
-
       if (path === '/certificates' || path.startsWith('/certificates/')) {
         const certId = route.params.certificateId || null;
         setTargetCertificateId(certId);
@@ -440,9 +430,17 @@ export default function App() {
     },
     isNewSignup?: boolean
   ) => {
-    // Determine the role directly from user's email address (prefer primaryEmail)
     const effectiveEmail = authUser.primaryEmail || authUser.email;
-    const identified = identifyRoleFromEmail(effectiveEmail);
+    // With a live backend the role from /auth/me is authoritative. The email lookup is only for offline mock accounts.
+    const emailIdentified = identifyRoleFromEmail(effectiveEmail);
+    const identified =
+      authUser.isBackendConnected && authUser.role
+        ? {
+            userRole: authUser.role,
+            dashboardRole: authUser.role as DashboardRole,
+            roleDisplayName: getRoleDisplayName(authUser.role as DashboardRole),
+          }
+        : emailIdentified;
     const existingAccount = userService.findUserByEmail(effectiveEmail);
     const secondary = authUser.secondaryEmail || existingAccount?.secondaryEmail || undefined;
 
@@ -462,18 +460,18 @@ export default function App() {
     setUser(sessionUser);
     setCurrentRole(identified.dashboardRole);
     try {
-      localStorage.setItem(STORAGE_LOGIN_KEY, 'true');
-      localStorage.setItem(STORAGE_ACTIVE_SESSION_KEY, JSON.stringify(sessionUser));
+      sessionStorage.setItem(STORAGE_LOGIN_KEY, 'true');
+      sessionStorage.setItem(STORAGE_ACTIVE_SESSION_KEY, JSON.stringify(sessionUser));
       localStorage.setItem(STORAGE_ACTIVE_SCREEN_KEY, 'dashboard');
       localStorage.setItem(STORAGE_ACTIVE_TAB_KEY, 'home');
-      localStorage.setItem('sems_user_email', effectiveEmail);
-      localStorage.setItem('sems_auth_backend_connected', String(Boolean(authUser.isBackendConnected)));
+      sessionStorage.setItem('sems_user_email', effectiveEmail);
+      sessionStorage.setItem('sems_auth_backend_connected', String(Boolean(authUser.isBackendConnected)));
       if (secondary) {
-        localStorage.setItem('sems_user_secondary_email', secondary);
+        sessionStorage.setItem('sems_user_secondary_email', secondary);
       } else {
-        localStorage.removeItem('sems_user_secondary_email');
+        sessionStorage.removeItem('sems_user_secondary_email');
       }
-      localStorage.setItem('sems_user_name', authUser.name);
+      sessionStorage.setItem('sems_user_name', authUser.name);
     } catch {
       // Safe fallback
     }
@@ -482,7 +480,7 @@ export default function App() {
       isNewSignup
         ? `Account registered! Welcome, ${authUser.name}!`
         : `Signed in as ${authUser.name} (${identified.roleDisplayName})${
-            authUser.isBackendConnected ? ' [Live Backend]' : ' [Offline / Mock Mode]'
+            import.meta.env.DEV ? (authUser.isBackendConnected ? ' [Live Backend]' : ' [Offline / Mock Mode]') : ''
           }`
     );
 
@@ -503,12 +501,12 @@ export default function App() {
   const handleUpdateUser = (updatedUser: AuthUser) => {
     setUser(updatedUser);
     try {
-      localStorage.setItem(STORAGE_ACTIVE_SESSION_KEY, JSON.stringify(updatedUser));
-      localStorage.setItem('sems_user_email', updatedUser.primaryEmail || updatedUser.email);
+      sessionStorage.setItem(STORAGE_ACTIVE_SESSION_KEY, JSON.stringify(updatedUser));
+      sessionStorage.setItem('sems_user_email', updatedUser.primaryEmail || updatedUser.email);
       if (updatedUser.secondaryEmail) {
-        localStorage.setItem('sems_user_secondary_email', updatedUser.secondaryEmail);
+        sessionStorage.setItem('sems_user_secondary_email', updatedUser.secondaryEmail);
       }
-      localStorage.setItem('sems_user_name', updatedUser.name);
+      sessionStorage.setItem('sems_user_name', updatedUser.name);
     } catch {
       // Safe fallback
     }
@@ -516,18 +514,16 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    clearStoredSession();
+    eventService.saveEvents([]);
+    setEvents([]);
+    setRegistrants([]);
+    setCertificates([]);
     setUser(null);
     setCurrentRole('guest');
     try {
-      localStorage.removeItem(STORAGE_LOGIN_KEY);
-      localStorage.removeItem(STORAGE_ACTIVE_SESSION_KEY);
       localStorage.removeItem(STORAGE_ACTIVE_TAB_KEY);
       localStorage.removeItem(STORAGE_ACTIVE_SCREEN_KEY);
-      localStorage.removeItem('sems_user_email');
-      localStorage.removeItem('sems_user_name');
-      localStorage.removeItem('sems_user_secondary_email');
-      localStorage.removeItem('sems_user_role');
-      localStorage.removeItem('sems_auth_backend_connected');
       sessionStorage.removeItem('sems_return_url');
     } catch {
       // Safe fallback
@@ -535,6 +531,28 @@ export default function App() {
     showNotification('Logged out successfully. Please sign in to continue.');
     navigate('#/login');
   };
+
+  // Token expired or revoked: apiFetch fires this event after a 401 on a logged-in request.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      handleLogout();
+      showNotification('Your session expired. Please sign in again.');
+    };
+    window.addEventListener('sems:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('sems:unauthorized', onUnauthorized);
+  }, []);
+
+  // Re-validate the saved backend session on startup: logs out deactivated users, refreshes the role.
+  useEffect(() => {
+    if (!user?.isBackendConnected) return;
+    apiFetch('/auth/me')
+      .then(async (res) => {
+        if (!res.ok) return; // a 401 fires 'sems:unauthorized' inside apiFetch
+        const me = await res.json();
+        if (me?.role && me.role !== currentRole) setCurrentRole(me.role as DashboardRole);
+      })
+      .catch(() => {});
+  }, [user?.primaryEmail]);
 
   const handleNavigateToSession = (sessionId: string) => {
     setTargetSessionId(sessionId);
@@ -641,9 +659,11 @@ export default function App() {
               registrants={registrants}
               onUpdateEvents={() => {}}
               onRegisterNewParticipant={(newReg) => {
-                setRegistrants((prev) => [newReg, ...prev]);
-                showNotification(`Registration saved for ${newReg.sessionTitle}`);
+                return reloadRegistrants().then(() =>
+                  showNotification(`Registration saved for ${newReg.sessionTitle}`)
+                );
               }}
+              onReloadRegistrants={reloadRegistrants}
               onNavigateHome={() => navigate('#/login')}
               onNavigateToAuth={(mode) => handleOpenAuth(mode)}
               onNotify={showNotification}
@@ -804,7 +824,6 @@ export default function App() {
                 onNavigateToAuth={handleOpenAuth}
                 onNavigateToSession={handleNavigateToSession}
                 onNavigateToSessionsList={() => navigate('#/sessions')}
-                onNavigateToSessionRooms={() => navigate('#/session-room')}
                 onNavigateToEvents={() => navigate('#/sessions')}
                 onNavigateToFormBuilder={() => navigate('#/form-builder')}
                 onNavigateToRegistrants={() => navigate('#/registrants')}
@@ -813,19 +832,21 @@ export default function App() {
                 onNavigateToCreateSession={() => {
                   navigate('#/sessions');
                 }}
-                onUpdateRegistrants={(updated) => {
-                  setRegistrants(updated);
-                  showNotification('Registration records updated.');
-                }}
-                onApproveEvent={(evtId) => {
-                  const res = eventService.approveEvent(
-                    evtId,
-                    currentRole,
-                    user?.primaryEmail || user?.email || 'superadmin@university.edu.pk'
-                  );
-                  if (res) {
+                onApproveEvent={async (evtId) => {
+                  if (currentRole !== 'super_admin') {
+                    showNotification('Unauthorized: Only Super Admin can approve events for publication.');
+                    return;
+                  }
+
+                  try {
+                    const res = await eventsApi.publishEvent(evtId);
+                    await eventService.refreshFromBackend();
                     setEvents(eventService.getEvents());
                     showNotification(`Event "${res.title}" approved & published to campus!`);
+                  } catch (error: any) {
+                    const message = error?.message || 'Failed to publish event.';
+                    showNotification(message);
+                    throw error;
                   }
                 }}
               />
@@ -855,53 +876,17 @@ export default function App() {
                   showNotification('Event repository synchronized.');
                 }}
                 onRegisterNewParticipant={(newReg) => {
-                  setRegistrants((prev) => [newReg, ...prev]);
-                  showNotification(`Registration saved for ${newReg.sessionTitle}`);
+                  return reloadRegistrants().then(() =>
+                    showNotification(`Registration saved for ${newReg.sessionTitle}`)
+                  );
                 }}
+                onReloadRegistrants={reloadRegistrants}
                 onNavigateHome={() => navigate('#/home')}
                 onNavigateToAuth={handleOpenAuth}
                 onNotify={showNotification}
                 initialSelectedSessionId={targetSessionId}
                 initialSelectedEventId={targetEventId}
                 initialSubScreen={targetEventId ? 'event-detail' : undefined}
-              />
-            </motion.div>
-          )}
-
-          {/* TAB: SESSION ROOMS (VIRTUAL MEETING HUB - ALL 4 ROLES) */}
-          {currentTab === 'session-room' && (
-            <motion.div
-              key="tab-session-room"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.15 }}
-            >
-              <SessionRoomsHubPage
-                currentRole={currentRole}
-                userName={
-                  user?.name ||
-                  (currentRole === 'guest'
-                    ? 'Guest User'
-                    : currentRole === 'student'
-                    ? 'Jordan Lee'
-                    : currentRole === 'super_admin'
-                    ? 'Prof. Dean Taylor'
-                    : 'Alex Morgan')
-                }
-                userEmail={
-                  user?.primaryEmail ||
-                  user?.email ||
-                  (currentRole === 'student'
-                    ? 'student@university.edu.pk'
-                    : currentRole === 'super_admin'
-                    ? 'dean.taylor@university.edu.pk'
-                    : 'admin@university.edu.pk')
-                }
-                sessions={sessions}
-                registrants={registrants}
-                onNotify={showNotification}
-                onNavigateToSessionDetail={handleNavigateToSession}
               />
             </motion.div>
           )}
@@ -951,10 +936,7 @@ export default function App() {
                 registrants={registrants}
                 currentUserEmail={user?.primaryEmail || user?.email}
                 currentUserName={user?.name}
-                onUpdateRegistrants={(updated) => {
-                  setRegistrants(updated);
-                  showNotification('Registrant records & payment status synchronized.');
-                }}
+                onReloadRegistrants={reloadRegistrants}
                 onBack={() => navigate('#/home')}
                 onNotify={showNotification}
                 onNavigateToSession={handleNavigateToSession}
@@ -984,10 +966,7 @@ export default function App() {
                   registrants={registrants}
                   currentUserEmail={user?.primaryEmail || user?.email}
                   currentUserName={user?.name}
-                  onUpdateRegistrants={(updated) => {
-                    setRegistrants(updated);
-                    showNotification('Registrant records & payment status synchronized.');
-                  }}
+                  onReloadRegistrants={reloadRegistrants}
                   onBack={() => navigate('#/home')}
                   onNotify={showNotification}
                   onNavigateToSession={handleNavigateToSession}

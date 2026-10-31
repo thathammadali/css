@@ -4,6 +4,10 @@
  */
 
 import React from 'react';
+
+const SOCIETY_NAME = 'Computer Science Society';
+const LEFT_SIGNATORY = { name: 'Head of Department', title: 'Computer Science Department' };
+const RIGHT_SIGNATORY = { name: 'Society Head', title: SOCIETY_NAME };
 import {
   Award,
   ShieldCheck,
@@ -133,10 +137,10 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
   customSubtitle,
   customAccentColor,
   backgroundImageUrl,
-  signatoryName = 'Alex Morgan',
-  signatoryTitle = 'Lead Session Administrator',
-  adminSignatoryName = 'Prof. Dean Taylor',
-  adminSignatoryTitle = 'Faculty Advisor & Institutional Dean',
+  signatoryName = LEFT_SIGNATORY.name,
+  signatoryTitle = LEFT_SIGNATORY.title,
+  adminSignatoryName = RIGHT_SIGNATORY.name,
+  adminSignatoryTitle = RIGHT_SIGNATORY.title,
   watermarkPending = certificate.status === 'pending_approval',
   customSignatureDataUrl,
   customAdminSignatureDataUrl,
@@ -228,7 +232,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
                 Official SEMS Accreditation
               </span>
               <h2 className="font-serif text-lg sm:text-xl font-bold text-slate-900 leading-tight">
-                {certificate.societyWing || 'University Society Executive Council'}
+                {certificate.societyWing || SOCIETY_NAME}
               </h2>
             </div>
           </div>
@@ -307,7 +311,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             <div className="flex items-center gap-2 mb-1">
               <ShieldCheck className="w-4 h-4 text-emerald-700" />
               <span className="font-mono text-[9px] uppercase tracking-wider font-bold text-slate-700">
-                SEMS PKI Secured
+                Verify online with this code
               </span>
             </div>
             <span className="font-mono text-[11px] font-bold text-slate-900 tracking-wider">
@@ -378,7 +382,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
                 Official Digital Credential // SEMS-v3
               </span>
               <h2 className="font-poppins text-lg sm:text-xl font-semibold text-white">
-                {certificate.societyWing || 'Robotics & AI Society'}
+                {certificate.societyWing || SOCIETY_NAME}
               </h2>
             </div>
           </div>
@@ -441,7 +445,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             <span className="font-mono text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
               {certificate.verificationCode}
             </span>
-            <span className="text-[9px] font-mono text-white/40 mt-0.5">Tamper-Evident SHA-256 Hash</span>
+            <span className="text-[9px] font-mono text-white/40 mt-0.5">Verify online with this code</span>
           </div>
 
           <div className="flex flex-col items-center">
@@ -488,7 +492,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
                 SEMS Institutional Registry
               </span>
               <h2 className="font-serif text-lg sm:text-xl font-bold text-white">
-                {certificate.societyWing || 'University Society Executive Directorate'}
+                {certificate.societyWing || SOCIETY_NAME}
               </h2>
             </div>
           </div>
@@ -581,7 +585,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
                 SEMS Minimalist Registry
               </span>
               <h2 className="font-poppins text-lg sm:text-xl font-semibold text-white">
-                {certificate.societyWing || 'Executive Student Chapter'}
+                {certificate.societyWing || SOCIETY_NAME}
               </h2>
             </div>
           </div>
@@ -672,7 +676,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
                 Executive Leadership Registry
               </span>
               <h2 className="font-serif text-lg sm:text-xl font-bold text-white">
-                {certificate.societyWing || 'Society Executive Directorate'}
+                {certificate.societyWing || SOCIETY_NAME}
               </h2>
             </div>
           </div>
@@ -763,7 +767,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
                 Heritage & Honors Fellowship
               </span>
               <h2 className="font-serif text-lg sm:text-xl font-bold text-slate-900">
-                {certificate.societyWing || 'University Society Heritage Assembly'}
+                {certificate.societyWing || SOCIETY_NAME}
               </h2>
             </div>
           </div>
@@ -856,7 +860,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
                 Technical Sprint Accreditation
               </span>
               <h2 className="font-poppins text-lg sm:text-xl font-bold text-white">
-                {certificate.societyWing || 'Technology & Engineering Council'}
+                {certificate.societyWing || SOCIETY_NAME}
               </h2>
             </div>
           </div>
@@ -972,7 +976,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               Image Graphic Canvas Accreditation
             </span>
             <h2 className="font-serif text-lg sm:text-xl font-bold text-slate-900 leading-tight">
-              {certificate.societyWing || 'University Society Accreditation Board'}
+              {certificate.societyWing || SOCIETY_NAME}
             </h2>
           </div>
         </div>
@@ -1023,7 +1027,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             {certificate.verificationCode}
           </span>
           <span className="text-[8px] font-mono text-slate-500 mt-0.5">
-            Tamper-Evident Graphic Template
+            Verify online with this code
           </span>
         </div>
 

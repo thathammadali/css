@@ -19,6 +19,7 @@ import { eligibilityService } from '../../services/eligibilityService';
 import { notificationService } from '../../services/notificationService';
 import { storageService } from '../../services/storageService';
 import { useModalDismiss } from '../../hooks/useModalDismiss';
+import { formatDeadline } from '../../utils/formatDeadline';
 
 interface SubmitTaskModalProps {
   isOpen: boolean;
@@ -161,7 +162,7 @@ export const SubmitTaskModal: React.FC<SubmitTaskModalProps> = ({
             <span className="text-purple-700 dark:text-purple-300 flex items-center gap-1.5 font-medium">
               <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" /> Deadline:
             </span>
-            <span className="font-mono text-[#172B3A] dark:text-[#F1F5F9] font-medium">{dueDate}</span>
+            <span className="font-mono text-[#172B3A] dark:text-[#F1F5F9] font-medium">{formatDeadline(dueDate)}</span>
           </div>
         )}
 
@@ -218,6 +219,7 @@ export const SubmitTaskModal: React.FC<SubmitTaskModalProps> = ({
               <input
                 id="task-sub-file"
                 type="file"
+                accept=".pdf,.zip,.png,.jpg,.jpeg"
                 onChange={(e) => {
                   if (e.target.files?.[0]) setAttachedFile(e.target.files[0]);
                 }}

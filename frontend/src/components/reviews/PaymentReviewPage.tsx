@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { getFeeStatus } from '../../utils/feeStatus';
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   ArrowLeft,
@@ -19,10 +20,7 @@ import {
   CheckCircle2,
   XCircle,
   Info,
-  KeyRound,
   Clock,
-  Lock,
-  Send,
   CheckSquare,
   Square,
   RotateCcw,
@@ -32,23 +30,18 @@ import {
   DashboardRole,
   PaymentStatus,
   SessionItem,
-  RoomAccessValidationResponse,
 } from '../../types';
-import { auditService } from '../../services/userService';
 import { eligibilityService } from '../../services/eligibilityService';
-import { notificationService } from '../../services/notificationService';
-import { roomAccessService } from '../../services/roomAccessService';
 import { eventService } from '../../services/eventService';
-import { storageService } from '../../services/storageService';
-import { RoomCodeInputDialog } from '../sessions/RoomCodeInputDialog';
-import { SessionRoomView } from '../sessions/SessionRoomView';
+import { registrationApi } from '../../services/registrationApi';
+import { validateReceiptFile } from '../../utils/validators';
 
 interface PaymentReviewPageProps {
   currentRole: DashboardRole;
   registrants: RegistrantItem[];
   currentUserEmail?: string;
   currentUserName?: string;
-  onUpdateRegistrants: (updated: RegistrantItem[]) => void;
+  onReloadRegistrants?: () => Promise<void>;
   onBack: () => void;
   onSelectRole?: (role: DashboardRole) => void;
   onNotify: (msg: string) => void;
@@ -64,18 +57,21 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
   registrants,
   currentUserEmail,
   currentUserName,
-  onUpdateRegistrants,
+  onReloadRegistrants,
   onBack,
   onNotify,
   onNavigateToSession,
   isLoading = false,
 }) => {
   const [filterStatus, setFilterStatus] = useState<
-    'all' | 'paid_approved' | 'pending' | 'code_needed' | 'code_allocated' | 'rejected'
+    'all' | 'paid_approved' | 'pending' | 'rejected'
   >('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState<RegistrantItem | null>(null);
+  const [receiptObjectUrl, setReceiptObjectUrl] = useState<string | null>(null);
   const [selectedRegistrantIds, setSelectedRegistrantIds] = useState<string[]>([]);
+  const [attendanceOverrides, setAttendanceOverrides] = useState<Record<string, boolean>>({});
+  const [attendanceUpdatingIds, setAttendanceUpdatingIds] = useState<string[]>([]);
 
   // Rejection reason modal state
   const [rejectingItem, setRejectingItem] = useState<RegistrantItem | null>(null);
@@ -94,17 +90,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
   } | null>(null);
 
   const canReview = currentRole === 'super_admin' || currentRole === 'admin';
-  const [, setDispatchTick] = useState(0);
-
-  // Room access dialog & live stage states for My Registrations
-  const [activeDialogSession, setActiveDialogSession] = useState<SessionItem | null>(null);
-  const [activeDialogRegistrant, setActiveDialogRegistrant] = useState<RegistrantItem | null>(null);
-  const [isRoomCodeModalOpen, setIsRoomCodeModalOpen] = useState(false);
-  const [activeRoomData, setActiveRoomData] = useState<{
-    sessionToken: string;
-    room: NonNullable<RoomAccessValidationResponse['room']>;
-  } | null>(null);
-
   // Escape key handler for all PaymentReviewPage modals
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -113,95 +98,36 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
         else if (rejectingItem) setRejectingItem(null);
         else if (resubmittingItem) setResubmittingItem(null);
         else if (inspectingEligibility) setInspectingEligibility(null);
-        else if (isRoomCodeModalOpen) setIsRoomCodeModalOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedReceipt, rejectingItem, resubmittingItem, inspectingEligibility, isRoomCodeModalOpen]);
+  }, [selectedReceipt, rejectingItem, resubmittingItem, inspectingEligibility]);
 
-  const handleOpenRoomCodeDialog = (session: SessionItem, reg: RegistrantItem) => {
-    setActiveDialogSession(session);
-    setActiveDialogRegistrant(reg);
-    setIsRoomCodeModalOpen(true);
-  };
-
-  const handleSendRoomCode = (reg: RegistrantItem) => {
-    if (!canReview) return;
-    const allSessions = eventService.getAllSessions();
-    const session = allSessions.find((s) => s.id === reg.sessionId) || ({
-      id: reg.sessionId,
-      title: reg.sessionTitle,
-      eventId: reg.eventId || 'evt-1',
-      society: 'University Society',
-      date: '2026-10-15',
-      time: '14:00 - 17:00',
-      location: 'Live Virtual Pod',
-      status: 'open',
-      isPaid: reg.amount && !reg.amount.includes('0') && !reg.amount.toLowerCase().includes('free'),
-    } as any);
-
-    const actorName = currentRole === 'super_admin' ? 'Super Admin' : 'Admin';
-    const result = roomAccessService.sendRoomCodeToParticipant(
-      session,
-      reg,
-      currentRole,
-      actorName
-    );
-
-    if (result.success) {
-      onNotify(result.message);
-      setDispatchTick((v) => v + 1);
-    } else {
-      onNotify(result.message);
-    }
-  };
-
-  const handleBulkAllocateCodes = (targetRegistrants: RegistrantItem[]) => {
-    if (!canReview) return;
-    const allSessions = eventService.getAllSessions();
-    const actorName = currentRole === 'super_admin' ? 'Super Admin' : 'Admin';
-    let successCount = 0;
-
-    const eligible = targetRegistrants.filter(
-      (r) => r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0'
-    );
-
-    if (eligible.length === 0) {
-      onNotify('No approved attendees found in current selection. Please approve payments first.');
-      return;
+  useEffect(() => {
+    let active = true;
+    if (!selectedReceipt) {
+      setReceiptObjectUrl(null);
+      return () => undefined;
     }
 
-    eligible.forEach((reg) => {
-      const session = allSessions.find((s) => s.id === reg.sessionId) || ({
-        id: reg.sessionId,
-        title: reg.sessionTitle,
-        eventId: reg.eventId || 'evt-1',
-        society: 'University Society',
-        date: '2026-10-15',
-        time: '14:00 - 17:00',
-        location: 'Live Virtual Pod',
-        status: 'open',
-        isPaid: reg.amount && !reg.amount.includes('0') && !reg.amount.toLowerCase().includes('free'),
-      } as any);
+    registrationApi
+      .openReceipt(selectedReceipt.id)
+      .then((blob) => {
+        if (active) setReceiptObjectUrl(URL.createObjectURL(blob));
+      })
+      .catch((error: any) => {
+        if (active) onNotify(error?.message || 'Failed to open receipt.');
+      });
 
-      const res = roomAccessService.sendRoomCodeToParticipant(
-        session,
-        reg,
-        currentRole,
-        actorName
-      );
-      if (res.success) {
-        successCount++;
-      }
-    });
-
-    setDispatchTick((v) => v + 1);
-    setSelectedRegistrantIds([]);
-    onNotify(
-      `Dispatched session room access codes to ${successCount} student(s)! In-app notifications sent.`
-    );
-  };
+    return () => {
+      active = false;
+      setReceiptObjectUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return null;
+      });
+    };
+  }, [selectedReceipt, onNotify]);
 
   const toggleSelectAll = (list: RegistrantItem[]) => {
     if (selectedRegistrantIds.length === list.length && list.length > 0) {
@@ -230,7 +156,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-inter font-medium bg-emerald-950/70 text-emerald-300 border border-emerald-500/50">
             <span className="w-1.5 h-1.5 rounded-full bg-[#34d399]" />
-            <span>Approved & Confirmed</span>
+            <span>Confirmed</span>
           </span>
         );
       case 'rejected':
@@ -240,147 +166,91 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
             <span>Rejected</span>
           </span>
         );
+      case 'cancelled':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-inter font-medium bg-white/10 text-white/60 border border-white/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-white/50" />
+            <span>Cancelled</span>
+          </span>
+        );
     }
   };
 
-  const handleApprove = (registrant: RegistrantItem) => {
+  const handleApprove = async (registrant: RegistrantItem) => {
     if (!canReview) return;
-    const updated = registrants.map((r) => {
-      if (r.id === registrant.id) {
-        return {
-          ...r,
-          status: 'approved' as PaymentStatus,
-          lifecycleStatus: 'CONFIRMED' as const,
-          receiptRejectedReason: undefined,
-        };
-      }
-      return r;
-    });
-
-    onUpdateRegistrants(updated);
-
-    // Persistent participant notification
-    notificationService.addNotification({
-      recipientEmail: registrant.email || registrant.primaryEmail,
-      type: 'payment_approved',
-      title: 'Payment Fee Approved',
-      message: `Your registration fee payment of PKR ${registrant.amount} for "${registrant.sessionTitle}" was verified and approved. Registration confirmed!`,
-      linkTab: 'registrants',
-      entityId: `pay-approved-${registrant.id}`,
-    });
-
-    auditService.log({
-      action: 'PAYMENT_APPROVED',
-      actor: currentRole === 'super_admin' ? 'Super Admin' : 'Admin',
-      actorRole: currentRole.toUpperCase(),
-      target: `${registrant.name} (${registrant.sessionTitle})`,
-      details: `Approved fee slip of PKR ${registrant.amount}.`,
-      result: 'SUCCESS',
-    });
-    onNotify(`Approved payment for ${registrant.name}. Registration confirmed.`);
+    try {
+      await registrationApi.approve(registrant.id);
+      await onReloadRegistrants?.();
+      onNotify('Payment approved.');
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to approve payment.');
+    }
   };
 
-  const handleConfirmReject = () => {
+  const handleConfirmReject = async () => {
     if (!rejectingItem) return;
-    if (!rejectionReason.trim()) {
-      onNotify('Rejection reason is required.');
+    const reason = rejectionReason.trim();
+    if (reason.length < 3 || reason.length > 300) {
+      onNotify('Rejection reason must be between 3 and 300 characters.');
       return;
     }
-
-    const updated = registrants.map((r) => {
-      if (r.id === rejectingItem.id) {
-        return {
-          ...r,
-          status: 'rejected' as PaymentStatus,
-          lifecycleStatus: 'PAYMENT_REJECTED' as any,
-          receiptRejectedReason: rejectionReason.trim(),
-        };
-      }
-      return r;
-    });
-
-    onUpdateRegistrants(updated);
-
-    // Persistent participant rejection feedback notification
-    notificationService.addNotification({
-      recipientEmail: rejectingItem.email || rejectingItem.primaryEmail,
-      type: 'payment_rejected',
-      title: 'Payment Verification Required',
-      message: `Your payment slip for "${rejectingItem.sessionTitle}" was not approved. Reason: ${rejectionReason.trim()}. Please resubmit a valid receipt slip.`,
-      linkTab: 'registrants',
-      entityId: `pay-rejected-${rejectingItem.id}-${Date.now()}`,
-    });
-
-    auditService.log({
-      action: 'PAYMENT_REJECTED',
-      actor: currentRole === 'super_admin' ? 'Super Admin' : 'Admin',
-      actorRole: currentRole.toUpperCase(),
-      target: `${rejectingItem.name} (${rejectingItem.sessionTitle})`,
-      details: `Rejected with reason: "${rejectionReason.trim()}". Resubmission permitted.`,
-      result: 'REJECTED',
-    });
-
-    onNotify(`Payment for ${rejectingItem.name} rejected with specified feedback.`);
-    setRejectingItem(null);
-    setRejectionReason('');
+    try {
+      await registrationApi.reject(rejectingItem.id, reason);
+      await onReloadRegistrants?.();
+      onNotify('Payment rejected.');
+      setRejectingItem(null);
+      setRejectionReason('');
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to reject payment.');
+    }
   };
 
   const handleConfirmResubmission = async () => {
     if (!resubmittingItem || !replacementFile) return;
 
-    const maxBytes = 5 * 1024 * 1024;
-    if (replacementFile.size > maxBytes) {
-      onNotify('File exceeds 5 MB maximum size limit.');
+    const fileError = validateReceiptFile(replacementFile);
+    if (fileError) {
+      onNotify(fileError);
       return;
     }
 
     try {
-      // Compress client-side to lightweight, permanent base64 data URL
-      const compressed = await storageService.compressImage(replacementFile);
-      
-      // Save permanently in IndexedDB
-      await storageService.saveFile({
-        key: `receipt_${resubmittingItem.id}`,
-        dataUrl: compressed.dataUrl,
-        fileName: replacementFile.name,
-        fileSize: compressed.compressedSize,
-        mimeType: compressed.mimeType,
-        createdAt: Date.now(),
-      });
-
-      const updated = registrants.map((r) => {
-        if (r.id === resubmittingItem.id) {
-          return {
-            ...r,
-            status: 'pending' as PaymentStatus,
-            lifecycleStatus: 'PAYMENT_PENDING' as any,
-            receiptFileName: replacementFile.name,
-            receiptFileSize: `${Math.round(compressed.compressedSize / 1024)} KB`,
-            receiptPreviewUrl: compressed.dataUrl,
-            receiptRejectedReason: undefined,
-          };
-        }
-        return r;
-      });
-
-      onUpdateRegistrants(updated);
-
-      // Persistent admin review alert
-      notificationService.addNotification({
-        recipientRole: 'admin',
-        type: 'payment_pending',
-        title: 'Replacement Fee Slip Resubmitted',
-        message: `${resubmittingItem.name} resubmitted a replacement receipt slip for "${resubmittingItem.sessionTitle}".`,
-        linkTab: 'registrants',
-        entityId: `admin-resubmit-${resubmittingItem.id}-${Date.now()}`,
-      });
-      onNotify(`Replacement receipt submitted for review (${Math.round(compressed.compressedSize / 1024)} KB offline-cached).`);
-    } catch (err) {
-      console.warn('Error compressing resubmitted receipt:', err);
-      onNotify('Failed to process receipt image. Please try again.');
+      await registrationApi.uploadReceipt(resubmittingItem.id, replacementFile);
+      await onReloadRegistrants?.();
+      onNotify('Replacement receipt submitted for review.');
+    } catch (err: any) {
+      onNotify(err?.message || 'Failed to upload replacement receipt.');
     } finally {
       setResubmittingItem(null);
       setReplacementFile(null);
+    }
+  };
+
+  const handleCancel = async (registrant: RegistrantItem) => {
+    try {
+      await registrationApi.cancel(registrant.id);
+      await onReloadRegistrants?.();
+      onNotify(`Registration for "${registrant.sessionTitle}" cancelled.`);
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to cancel registration.');
+    }
+  };
+
+  const handleAttendanceChange = async (registrant: RegistrantItem, attended: boolean) => {
+    if (!canReview || registrant.backendStatus !== 'CONFIRMED') return;
+
+    setAttendanceUpdatingIds((current) => [...current, registrant.id]);
+    try {
+      const updated = await registrationApi.setAttendance(registrant.id, attended);
+      setAttendanceOverrides((current) => ({
+        ...current,
+        [registrant.id]: updated.attended === true,
+      }));
+      onNotify(`Attendance ${attended ? 'marked' : 'cleared'}.`);
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to update attendance.');
+    } finally {
+      setAttendanceUpdatingIds((current) => current.filter((id) => id !== registrant.id));
     }
   };
 
@@ -464,23 +334,12 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
     return accessibleRegistrants.filter((r: RegistrantItem) => {
       let matchesFilter = true;
       const isPaidOrFree = r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0';
-      const hasCode = !!roomAccessService.getDispatchForParticipant(
-        r.sessionId,
-        r.email || r.primaryEmail || ''
-      );
-
       switch (filterStatus) {
         case 'paid_approved':
           matchesFilter = isPaidOrFree;
           break;
         case 'pending':
           matchesFilter = r.status === 'pending';
-          break;
-        case 'code_needed':
-          matchesFilter = isPaidOrFree && !hasCode;
-          break;
-        case 'code_allocated':
-          matchesFilter = hasCode;
           break;
         case 'rejected':
           matchesFilter = r.status === 'rejected';
@@ -500,38 +359,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
     });
   }, [accessibleRegistrants, filterStatus, searchQuery]);
 
-  if (activeRoomData && activeDialogSession) {
-    return (
-      <SessionRoomView
-        session={activeDialogSession}
-        room={activeRoomData.room}
-        sessionToken={activeRoomData.sessionToken}
-        currentRole={currentRole}
-        userName={
-          currentUserName ||
-          (currentRole === 'guest'
-            ? 'Guest Member'
-            : currentRole === 'student'
-            ? 'Jordan Lee'
-            : 'Participant')
-        }
-        userEmail={
-          currentUserEmail ||
-          (currentRole === 'guest'
-            ? 'sarah.connor@industrytech.io'
-            : 'student@university.edu.pk')
-        }
-        registrant={activeDialogRegistrant || undefined}
-        onLeaveRoom={() => {
-          roomAccessService.leaveRoom(activeRoomData.sessionToken);
-          setActiveRoomData(null);
-          onNotify(`Left room "${activeRoomData.room.roomName}".`);
-        }}
-        onNotify={onNotify}
-      />
-    );
-  }
-
   return (
     <div id="payment-review-page" className="w-full space-y-6 animate-fadeIn pb-12">
       {/* Top Header */}
@@ -547,67 +374,16 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
           </button>
           <div>
             <h1 className="font-poppins font-semibold text-2xl text-white">
-              {canReview ? 'Registrants & Session Access Review' : 'My Registration Status'}
+              {canReview ? 'Registrants & Payment Review' : 'My Registration Status'}
             </h1>
             <p className="text-xs font-inter text-[var(--text-sec-80)] mt-0.5">
               {canReview
-                ? 'Verify payment receipts, allocate session room access codes, and track certificate eligibility.'
-                : 'Track your registered sessions, fee payment confirmation status, and live room access.'}
+                ? 'Verify payment receipts and track certificate eligibility.'
+                : 'Track your registered sessions and fee payment confirmation status.'}
             </p>
           </div>
         </div>
       </div>
-
-      {/* Admin & Super Admin Step-by-Step Code Allocation Guide Banner */}
-      {canReview && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-black/30 border border-purple-500/30 backdrop-blur-xl space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-300">
-                <KeyRound className="w-4 h-4" />
-              </span>
-              <h2 className="font-poppins font-semibold text-sm sm:text-base text-white">
-                Admin & Super Admin Guide: How to Allocate Session Room Access Codes to Students
-              </h2>
-            </div>
-            <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-200 border border-purple-500/30">
-              {currentRole === 'super_admin' ? '👑 Super Admin Authority' : '🛡️ Admin Authority'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-white/80">
-            <div className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-1">
-              <strong className="text-white flex items-center gap-1.5 text-xs font-semibold">
-                <span className="w-5 h-5 rounded-full bg-purple-500/30 text-purple-200 flex items-center justify-center text-[10px] font-bold">1</span>
-                Filter Eligible Students (Paid / Registered):
-              </strong>
-              <p className="text-[11px] text-white/60">
-                Click <strong>"Paid / Approved Only"</strong> in the filter bar below to instantly display only students whose payments and registrations have been verified.
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-1">
-              <strong className="text-white flex items-center gap-1.5 text-xs font-semibold">
-                <span className="w-5 h-5 rounded-full bg-emerald-500/30 text-emerald-200 flex items-center justify-center text-[10px] font-bold">2</span>
-                Allocate the Room Code:
-              </strong>
-              <p className="text-[11px] text-white/60">
-                Click <strong>"Allocate Code"</strong> on an individual student row, or use the multi-select checkboxes and click <strong>"Bulk Allocate to All Paid"</strong> to dispatch codes in batch.
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-1">
-              <strong className="text-white flex items-center gap-1.5 text-xs font-semibold">
-                <span className="w-5 h-5 rounded-full bg-cyan-500/30 text-cyan-200 flex items-center justify-center text-[10px] font-bold">3</span>
-                Real-Time Student Notification:
-              </strong>
-              <p className="text-[11px] text-white/60">
-                As soon as the access code is dispatched, it arrives immediately in the student's in-app notification bell (🔔). The student can then unlock and enter the live session room without delay.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Search, Filter Pills & Bulk Action Bar */}
       <div className="space-y-3">
@@ -647,52 +423,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
             >
               Payment Pending ({accessibleRegistrants.filter((r) => r.status === 'pending').length})
             </button>
-            {canReview && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setFilterStatus('code_needed')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                    filterStatus === 'code_needed'
-                      ? 'bg-purple-500/30 text-purple-200 border border-purple-500/40 shadow'
-                      : 'text-white/60 hover:text-white'
-                  }`}
-                >
-                  Code Needed (
-                  {
-                    accessibleRegistrants.filter(
-                      (r) =>
-                        (r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0') &&
-                        !roomAccessService.getDispatchForParticipant(
-                          r.sessionId,
-                          r.email || r.primaryEmail || ''
-                        )
-                    ).length
-                  }
-                  )
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterStatus('code_allocated')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                    filterStatus === 'code_allocated'
-                      ? 'bg-indigo-500/30 text-indigo-200 border border-indigo-500/40 shadow'
-                      : 'text-white/60 hover:text-white'
-                  }`}
-                >
-                  Code Allocated (
-                  {
-                    accessibleRegistrants.filter((r) =>
-                      roomAccessService.getDispatchForParticipant(
-                        r.sessionId,
-                        r.email || r.primaryEmail || ''
-                      )
-                    ).length
-                  }
-                  )
-                </button>
-              </>
-            )}
           </div>
 
           {/* Search Input */}
@@ -705,6 +435,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
               placeholder="Search attendee, roll no, session..."
               className="w-full h-10 pl-9 pr-8 rounded-xl bg-white/[0.05] border border-white/[0.12] text-xs text-white placeholder-white/40 focus:outline-none focus:border-[var(--primary-accent)]"
             />
+            <p className="text-[11px] text-white/50 text-right">{rejectionReason.length} / 300</p>
             {searchQuery && (
               <button
                 type="button"
@@ -718,68 +449,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
           </div>
         </div>
 
-        {/* Super Admin & Admin Bulk Allocation Action Toolbar */}
-        {canReview && (
-          <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => toggleSelectAll(filteredRegistrants)}
-                className="flex items-center gap-1.5 text-xs text-white/70 hover:text-white cursor-pointer"
-              >
-                {selectedRegistrantIds.length === filteredRegistrants.length && filteredRegistrants.length > 0 ? (
-                  <CheckSquare className="w-4 h-4 text-[var(--primary-accent)]" />
-                ) : (
-                  <Square className="w-4 h-4 text-white/40" />
-                )}
-                <span>Select All Filtered ({filteredRegistrants.length})</span>
-              </button>
-
-              {selectedRegistrantIds.length > 0 && (
-                <span className="text-xs text-purple-300 font-medium">
-                  {selectedRegistrantIds.length} attendee(s) selected
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Batch Allocate to Selected */}
-              {selectedRegistrantIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleBulkAllocateCodes(
-                      filteredRegistrants.filter((r) => selectedRegistrantIds.includes(r.id))
-                    )
-                  }
-                  className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Allocate Codes to Selected ({selectedRegistrantIds.length})</span>
-                </button>
-              )}
-
-              {/* Instant Allocate to All Approved in Current Filter */}
-              <button
-                type="button"
-                onClick={() => handleBulkAllocateCodes(filteredRegistrants)}
-                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
-                title="Send room access code to all approved attendees in current filter"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>
-                  Bulk Allocate to All Paid / Approved (
-                  {
-                    filteredRegistrants.filter(
-                      (r) => r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0'
-                    ).length
-                  }
-                  )
-                </span>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Registrations List Section */}
@@ -832,7 +501,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                   amount: reg.amount && !reg.amount.includes('0') ? 500 : 0,
                 } as SessionItem);
 
-              const room = roomAccessService.getOrCreateRoomForSession(session);
               const isSessionClosed = session.status === 'closed';
               const isPaidSession =
                 !!session.isPaid ||
@@ -842,12 +510,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
               const isRegistrationPending =
                 reg.lifecycleStatus === 'FORM_IN_PROGRESS' ||
                 reg.lifecycleStatus === 'SUBMITTED';
-
-              const userDispatch = roomAccessService.getDispatchForParticipant(
-                reg.sessionId,
-                reg.email || reg.primaryEmail || ''
-              );
-              const hasDispatchedCode = !!userDispatch;
 
               return (
                 <div
@@ -870,7 +532,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                       </div>
                     </div>
                     <span className="px-2.5 py-1 rounded-lg bg-white/[0.08] text-white font-mono text-xs font-semibold shrink-0">
-                      PKR {reg.amount || (session.isPaid ? session.amount : '0 (Free)')}
+                      {getFeeStatus(reg, !!isPaidSession).label}
                     </span>
                   </div>
 
@@ -949,31 +611,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                               <span>Reject</span>
                             </button>
                           </div>
-                        ) : (reg.status === 'approved' || reg.amount?.includes('Free') || reg.amount === '0') ? (
-                          hasDispatchedCode ? (
-                            <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30">
-                              <span className="font-mono text-xs font-semibold text-emerald-300 flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                Code: {userDispatch?.accessCodeSent}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleSendRoomCode(reg)}
-                                className="px-2.5 py-1 rounded-lg bg-purple-900/60 text-purple-200 text-xs font-medium cursor-pointer"
-                              >
-                                Resend
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleSendRoomCode(reg)}
-                              className="w-full py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow cursor-pointer transition-all active:scale-95"
-                            >
-                              <KeyRound className="w-3.5 h-3.5" />
-                              <span>Allocate Room Code</span>
-                            </button>
-                          )
                         ) : reg.status === 'rejected' ? (
                           <div className="text-center text-xs text-rose-300 font-medium py-1">
                             Rejected • Waiting for Student Resubmission
@@ -997,16 +634,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                           </button>
                         ) : isSessionClosed ? (
                           <div className="text-center text-xs text-white/50 py-1">Session Closed</div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenRoomCodeDialog(session, reg)}
-                            className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow cursor-pointer transition-all active:scale-95"
-                          >
-                            <KeyRound className="w-3.5 h-3.5" />
-                            <span>Enter Session Room</span>
-                          </button>
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -1039,8 +667,9 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                     <th className="py-3 px-4">Session & Fee</th>
                     <th className="py-3 px-4">Receipt Slip</th>
                     <th className="py-3 px-4">Status & Schema</th>
+                    <th className="py-3 px-4">Attended</th>
                     <th className="py-3 px-4">Certificate Eligibility</th>
-                    <th className="py-3 px-4 text-right">Actions & Room Code</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.06]">
@@ -1072,25 +701,17 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                       amount: reg.amount && !reg.amount.includes('0') ? 500 : 0,
                     } as SessionItem);
 
-                  const room = roomAccessService.getOrCreateRoomForSession(session);
                   const isSessionClosed = session.status === 'closed';
                   const isPaidSession =
                     !!session.isPaid ||
                     (reg.amount &&
                       !reg.amount.includes('0') &&
                       !reg.amount.toLowerCase().includes('free'));
-                  const isPaymentPending = isPaidSession && reg.status === 'pending';
-                  const isPaymentRejected = isPaidSession && reg.status === 'rejected';
-                  const isPaymentApproved = !isPaidSession || reg.status === 'approved';
+                  const isPaymentPending = reg.backendStatus === 'PAYMENT_PENDING';
+                  const isPaymentRejected = reg.backendStatus === 'PAYMENT_REJECTED';
                   const isRegistrationPending =
                     reg.lifecycleStatus === 'FORM_IN_PROGRESS' ||
                     reg.lifecycleStatus === 'SUBMITTED';
-                  const isRoomLocked = room.status === 'revoked' || room.status === 'locked';
-                  const userDispatch = roomAccessService.getDispatchForParticipant(
-                    reg.sessionId,
-                    reg.email || reg.primaryEmail || ''
-                  );
-                  const hasDispatchedCode = !!userDispatch;
 
                   return (
                     <tr
@@ -1126,7 +747,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                       <td className="py-3.5 px-4">
                         <div className="text-white font-medium">{reg.sessionTitle}</div>
                         <div className="text-[11px] text-amber-300 font-mono">
-                          PKR {reg.amount}
+                          {getFeeStatus(reg, !!isPaidSession).label}
                         </div>
                         {onNavigateToSession && (
                           <button
@@ -1150,7 +771,11 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                             <span className="truncate max-w-[140px]">{reg.receiptFileName}</span>
                           </button>
                         ) : (
-                          <span className="text-white/40 text-[11px] italic">No slip required / free</span>
+                          <span className="text-white/40 text-[11px] italic">
+                            {reg.backendStatus === 'PAYMENT_PENDING' || reg.backendStatus === 'PAYMENT_REJECTED'
+                              ? 'No receipt uploaded'
+                              : 'No slip required / free'}
+                          </span>
                         )}
                       </td>
 
@@ -1163,6 +788,24 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                           <div className="p-2 rounded-lg bg-rose-950/60 border border-rose-500/30 text-[11px] text-rose-200">
                             <strong>Reason:</strong> {reg.receiptRejectedReason}
                           </div>
+                        )}
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        {reg.backendStatus === 'CONFIRMED' ? (
+                          <label className="inline-flex items-center gap-2 text-[11px] text-white/70">
+                            <input
+                              type="checkbox"
+                              checked={attendanceOverrides[reg.id] ?? reg.attended === true}
+                              disabled={attendanceUpdatingIds.includes(reg.id)}
+                              onChange={(event) => handleAttendanceChange(reg, event.target.checked)}
+                              className="rounded accent-[var(--primary-accent)] cursor-pointer disabled:cursor-wait"
+                              aria-label={`Mark ${reg.name} as attended`}
+                            />
+                            <span>{(attendanceOverrides[reg.id] ?? reg.attended === true) ? 'Yes' : 'No'}</span>
+                          </label>
+                        ) : (
+                          <span className="text-white/40">-</span>
                         )}
                       </td>
 
@@ -1191,38 +834,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                       {canReview ? (
                         <div className="flex flex-col items-end gap-1.5">
                           <div className="flex items-center justify-end gap-1.5">
-                            {/* If payment approved (or free): Allocate Room Code or Resend */}
-                            {(reg.status === 'approved' || reg.amount?.includes('Free') || reg.amount === '0') ? (
-                              <div className="flex items-center gap-1.5">
-                                {hasDispatchedCode ? (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-mono font-semibold px-2 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shadow-sm">
-                                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                      <span>Code: {userDispatch?.accessCodeSent}</span>
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSendRoomCode(reg)}
-                                      className="px-2 py-1 rounded-lg bg-purple-900/60 hover:bg-purple-800/80 text-purple-200 border border-purple-500/40 text-[11px] font-medium cursor-pointer transition-all active:scale-95"
-                                      title="Resend code notification to participant"
-                                    >
-                                      Resend
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSendRoomCode(reg)}
-                                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs cursor-pointer flex items-center gap-1.5 shadow transition-all active:scale-95"
-                                    title="Allocate and send unique room access code to this student"
-                                  >
-                                    <KeyRound className="w-3.5 h-3.5" />
-                                    <span>Allocate Room Code</span>
-                                  </button>
-                                )}
-                              </div>
-                            ) : null}
-
                             {reg.status !== 'approved' && (
                               <button
                                 type="button"
@@ -1251,15 +862,19 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                             )}
                           </div>
 
-                          {hasDispatchedCode && (
-                            <span className="text-[10px] text-purple-300/80 font-mono flex items-center gap-1">
-                              <span>Delivered to {reg.name}'s Notifications</span>
-                            </span>
-                          )}
                         </div>
                       ) : (
                         /* Student & Guest View in My Registrations */
                         <div className="flex flex-col items-end gap-1.5">
+                          {reg.status !== 'cancelled' && (
+                            <button
+                              type="button"
+                              onClick={() => handleCancel(reg)}
+                              className="px-3 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-white/80 text-xs cursor-pointer"
+                            >
+                              Cancel Registration
+                            </button>
+                          )}
                           {isSessionClosed ? (
                             /* State 1: Session Completed */
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-inter font-medium bg-white/10 text-white/60 border border-white/20">
@@ -1279,8 +894,20 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                                 <span>Payment Pending</span>
                               </span>
                               <span className="block text-[10px] text-amber-200/70">
-                                Room access locked until verification
+                                Access becomes available after verification
                               </span>
+                              {!reg.receiptFileName && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setResubmittingItem(reg);
+                                    setReplacementFile(null);
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-[var(--primary-accent)] text-white text-xs font-medium cursor-pointer"
+                                >
+                                  Upload receipt
+                                </button>
+                              )}
                             </div>
                           ) : isPaymentRejected ? (
                             /* State 4: Payment Rejected */
@@ -1300,42 +927,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                                 Resubmit Slip
                               </button>
                             </div>
-                          ) : isRoomLocked ? (
-                            /* State 5: Room Access Not Available */
-                            <div className="text-right space-y-0.5">
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-inter font-medium bg-rose-950/70 text-rose-300 border border-rose-500/40">
-                                <Lock className="w-3.5 h-3.5 text-rose-400" />
-                                <span>Room Access Not Available</span>
-                              </span>
-                              <span className="block text-[10px] text-rose-200/70">
-                                Locked by host
-                              </span>
-                            </div>
-                          ) : (
-                            /* State 6: Eligible! (Paid & Approved OR Free session) -> Show Enter Session Room */
-                            <div className="flex flex-col items-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenRoomCodeDialog(session, reg)}
-                                className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-inter font-medium text-xs shadow-lg shadow-purple-900/30 flex items-center gap-1.5 cursor-pointer transition-all"
-                                title="Open Room Code Input & Enter Session Room"
-                              >
-                                <KeyRound className="w-3.5 h-3.5 text-purple-200" />
-                                <span>Enter Session Room</span>
-                              </button>
-
-                              {hasDispatchedCode ? (
-                                <span className="text-[10px] text-purple-300 font-mono flex items-center gap-1">
-                                  <CheckCircle2 className="w-3 h-3 text-purple-400" />
-                                  <span>Code Dispatched</span>
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-emerald-300 font-mono">
-                                  Room Access Ready
-                                </span>
-                              )}
-                            </div>
-                          )}
+                          ) : null}
                         </div>
                       )}
                     </td>
@@ -1375,22 +967,11 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
             </div>
 
             <div className="rounded-xl overflow-hidden border border-white/[0.10] bg-black/40 max-h-[360px] flex items-center justify-center p-2">
-              {selectedReceipt.receiptPreviewUrl ? (
+              {receiptObjectUrl ? (
                 <img
-                  src={selectedReceipt.receiptPreviewUrl}
+                  src={receiptObjectUrl}
                   alt="Payment Receipt Slip"
                   className="max-h-[340px] w-auto object-contain rounded-lg"
-                  onError={(e) => {
-                    // If image fails, attempt loading from IndexedDB
-                    storageService.getFile(`receipt_${selectedReceipt.id}`).then((rec) => {
-                      if (rec?.dataUrl) {
-                        (e.target as HTMLImageElement).src = rec.dataUrl;
-                      } else {
-                        (e.target as HTMLImageElement).src =
-                          'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80';
-                      }
-                    });
-                  }}
                 />
               ) : (
                 <div className="p-8 text-center text-xs text-white/50">
@@ -1402,15 +983,26 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
 
             <div className="flex items-center justify-between pt-2 border-t border-white/[0.10]">
               <span className="text-[11px] font-mono text-[var(--text-sec-60)]">
-                Amount: PKR {selectedReceipt.amount}
+                Fee: {getFeeStatus(selectedReceipt, true).label}
               </span>
-              <button
-                type="button"
-                onClick={() => setSelectedReceipt(null)}
-                className="px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-xs text-white cursor-pointer"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                {receiptObjectUrl && (
+                  <button
+                    type="button"
+                    onClick={() => window.open(receiptObjectUrl, '_blank', 'noopener,noreferrer')}
+                    className="px-4 py-2 rounded-xl bg-[var(--primary-accent)] hover:brightness-110 text-xs text-white cursor-pointer"
+                  >
+                    Open Receipt
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedReceipt(null)}
+                  className="px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-xs text-white cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1442,8 +1034,8 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
               <textarea
                 rows={3}
                 value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="e.g. Transaction ID was truncated; deposited amount does not match session fee (PKR 500)."
+                onChange={(e) => setRejectionReason(e.target.value.slice(0, 300))}
+                placeholder="e.g. Transaction ID was truncated; deposited amount does not match session fee (Rs. 500)."
                 className="w-full p-3 rounded-xl bg-white/[0.06] border border-white/[0.15] text-white focus:outline-none focus:border-rose-400 resize-none"
               />
             </div>
@@ -1493,18 +1085,11 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    const validExtensions = ['jpg', 'jpeg', 'png', 'pdf'];
-                    const ext = file.name.split('.').pop()?.toLowerCase() || '';
-                    if (!validExtensions.includes(ext)) {
-                      setReplacementError('Invalid file format. Allowed files: PDF, JPG, or PNG.');
+                    const fileError = validateReceiptFile(file);
+                    if (fileError) {
+                      setReplacementError(fileError);
                       setReplacementFile(null);
-                      onNotify('Invalid file format: Please select a PDF, JPG, or PNG file.');
-                      return;
-                    }
-                    if (file.size > 5 * 1024 * 1024) {
-                      setReplacementError('Receipt file exceeds 5 MB maximum allowed size.');
-                      setReplacementFile(null);
-                      onNotify('File too large: Maximum 5 MB per receipt upload.');
+                      onNotify(fileError);
                       return;
                     }
                     setReplacementError(null);
@@ -1708,25 +1293,6 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
         </div>
       )}
 
-      {/* Existing Room Code Input Dialog (reused without duplication) */}
-      {activeDialogSession && (
-        <RoomCodeInputDialog
-          session={activeDialogSession}
-          currentUserEmail={
-            currentUserEmail ||
-            (currentRole === 'guest'
-              ? 'sarah.connor@industrytech.io'
-              : 'student@university.edu.pk')
-          }
-          registrant={activeDialogRegistrant || undefined}
-          isOpen={isRoomCodeModalOpen}
-          onClose={() => setIsRoomCodeModalOpen(false)}
-          onAuthorized={(authData) => {
-            setActiveRoomData(authData);
-          }}
-          onNotify={onNotify}
-        />
-      )}
     </div>
   );
 };

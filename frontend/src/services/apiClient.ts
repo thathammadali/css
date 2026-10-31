@@ -3,104 +3,178 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { UserAccount, DashboardRole, EventItem, SessionItem, EventStatus, SessionStatus } from '../types';
+import { UserAccount, DashboardRole, EventItem, PaymentDetails, SessionItem, EventStatus, SessionStatus } from '../types';
+import { DEMO_MODE } from '../config';
 import { userService } from './userService';
 import { INITIAL_EVENTS } from '../data/mockEvents';
 
-/**
- * Single centralized API base URL config.
- * Reads first from localStorage (for dynamic tunnel testing without rebuilding),
- * then falls back to import.meta.env.VITE_API_BASE_URL, and defaults to '' (same origin / proxy).
- */
 const TUNNEL_STORAGE_KEY = 'sems_api_tunnel_url';
 const AUTH_TOKEN_KEY = 'sems_auth_token';
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+/** Base URL: in-app override (tunnel modal) first, then VITE_API_BASE_URL. No hardcoded default. */
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
     const override = localStorage.getItem(TUNNEL_STORAGE_KEY);
-    if (override && override.trim()) {
-      return override.trim().replace(/\/+$/, '');
-    }
+    if (override && override.trim()) return override.trim().replace(/\/+$/, '');
   }
   const envUrl = (import.meta.env.VITE_API_BASE_URL as string) || '';
-  if (envUrl && envUrl.trim()) {
-    return envUrl.trim().replace(/\/+$/, '');
-  }
-  // Default to active Cloudflare tunnel provided by backend
-  return 'https://size-childrens-cream-identity.trycloudflare.com';
+  return envUrl.trim().replace(/\/+$/, '');
 }
 
 export function setApiBaseUrl(url: string): void {
-  if (typeof window !== 'undefined') {
-    if (url && url.trim()) {
-      localStorage.setItem(TUNNEL_STORAGE_KEY, url.trim().replace(/\/+$/, ''));
-    } else {
-      localStorage.removeItem(TUNNEL_STORAGE_KEY);
-    }
+  if (typeof window === 'undefined') return;
+  if (url && url.trim()) localStorage.setItem(TUNNEL_STORAGE_KEY, url.trim().replace(/\/+$/, ''));
+  else localStorage.removeItem(TUNNEL_STORAGE_KEY);
+}
+
+/** Cached signed-in user keys. They live in sessionStorage, so closing the tab signs the user out. */
+export const SESSION_USER_KEYS = [
+  'sems_is_logged_in',
+  'sems_active_session',
+  'sems_user_email',
+  'sems_user_name',
+  'sems_user_secondary_email',
+  'sems_user_role',
+  'sems_auth_backend_connected',
+];
+
+const LEGACY_AUTH_KEYS = [AUTH_TOKEN_KEY, ...SESSION_USER_KEYS];
+
+function removeKeys(storage: () => Storage, keys: string[]): void {
+  try {
+    const target = storage();
+    keys.forEach((key) => target.removeItem(key));
+  } catch {
+    // storage unavailable
   }
 }
 
+/** Removes the token and cached user from sessionStorage and from the old localStorage location. */
+export function clearStoredSession(): void {
+  if (typeof window === 'undefined') return;
+  removeKeys(() => sessionStorage, LEGACY_AUTH_KEYS);
+  removeKeys(() => localStorage, LEGACY_AUTH_KEYS);
+}
+
+// One-time cleanup: anyone signed in through the old localStorage storage is signed out.
+if (typeof window !== 'undefined') removeKeys(() => localStorage, LEGACY_AUTH_KEYS);
+
 export function getStoredAuthToken(): string | null {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem(AUTH_TOKEN_KEY);
+  if (typeof window === 'undefined') return null;
+  try {
+    return sessionStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
   }
-  return null;
 }
 
 export function setStoredAuthToken(token: string | null): void {
-  if (typeof window !== 'undefined') {
-    if (token) {
-      localStorage.setItem(AUTH_TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
-    }
+  if (typeof window === 'undefined') return;
+  try {
+    if (token) sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    else sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    // storage unavailable
   }
 }
 
-/**
- * Returns the exact origin of the preview (scheme + host, e.g. https://ais-dev-xxxx.run.app)
- * for backend CORS configuration.
- */
 export function getPreviewOrigin(): string {
-  if (typeof window !== 'undefined' && window.location) {
-    return window.location.origin;
+  return typeof window !== 'undefined' && window.location ? window.location.origin : '';
+}
+
+/** Turns FastAPI error bodies ({detail: string | [...]}) into one readable string. */
+export async function readError(res: Response): Promise<string> {
+  const body = await res.json().catch(() => null);
+  const d = body?.detail;
+  if (Array.isArray(d)) {
+    const labels: Record<string, string> = {
+      full_name: 'Full name',
+      primary_email: 'Email',
+      secondary_email: 'Secondary email',
+      roll_number: 'Roll number',
+      phone: 'Phone number',
+      department: 'Department',
+      institution: 'Institution',
+      password: 'Password',
+      title: 'Title',
+      capacity: 'Capacity',
+      fee_amount: 'Fee',
+      payment_method: 'Payment method',
+      account_title: 'Account title',
+      account_number: 'Account number',
+      payment_instructions: 'Payment instructions',
+      registration_deadline: 'Registration deadline',
+      reason: 'Reason',
+      meeting_links: 'Meeting link',
+      meeting_link: 'Meeting link',
+      location: 'Location',
+      speaker: 'Speaker',
+    };
+    return d.map((x: any) => {
+      const field = (x.loc || []).filter((part: unknown) => typeof part === 'string').pop() as string | undefined;
+      const label = (field && labels[field]) || 'Field';
+      const type = String(x.type || '');
+      const rawMessage = String(x.msg || '');
+      if (rawMessage.startsWith('Value error, ')) return rawMessage.slice('Value error, '.length);
+      if (type === 'missing') return `${label} is required.`;
+      if (type === 'value_error.email') return 'Enter a valid email address, for example name@gmail.com.';
+      if (type === 'string_too_short') return `${label} is too short.`;
+      if (type === 'string_too_long') return `${label} is too long.`;
+      if (type === 'string_pattern_mismatch') return `${label} has an invalid format.`;
+      if (type === 'int_parsing' || type === 'float_parsing') return `${label} must be a number.`;
+      if (type === 'greater_than' || type === 'greater_than_equal') return `${label} is below the allowed minimum.`;
+      if (type === 'less_than' || type === 'less_than_equal') return `${label} is above the allowed maximum.`;
+      if (rawMessage.includes('Field required')) return `${label} is required.`;
+      return rawMessage.replace(/^Value error, /, '').replace(/\s*\(type=[^)]+\)/, '') || `${label} is invalid.`;
+    }).join(' ');
   }
-  return '';
+  if (typeof d === 'string') return d;
+  return body?.message || `Request failed (${res.status})`;
 }
 
 /**
- * Centralized fetch client for backend API & tunnel requests.
- * Automatically adds:
- *  - "ngrok-skip-browser-warning": "true" for ngrok tunnels
- *  - Authorization: Bearer <token> if stored
- *  - API Base URL prefix
+ * Central fetch. Throws if no backend URL is configured (callers treat that as "offline").
+ * On a 401 for a request that carried a token, clears the session and fires 'sems:unauthorized' once.
  */
-export async function apiFetch(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<Response> {
+export async function apiFetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
   const baseUrl = getApiBaseUrl();
+  if (!baseUrl) throw new Error('Backend URL is not configured');
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const fullUrl = baseUrl ? `${baseUrl}${cleanEndpoint}` : cleanEndpoint;
 
   const headers = new Headers(options.headers || {});
-
-  // Ngrok bypass header required for tunnels
-  if (!headers.has('ngrok-skip-browser-warning')) {
-    headers.set('ngrok-skip-browser-warning', 'true');
-  }
-
-  // Auto-attach stored Bearer token if not explicitly set
+  if (!headers.has('ngrok-skip-browser-warning')) headers.set('ngrok-skip-browser-warning', 'true');
   const token = getStoredAuthToken();
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
 
-  return fetch(fullUrl, {
-    ...options,
-    headers,
-  });
+  const res = await fetch(`${baseUrl}${cleanEndpoint}`, { ...options, headers });
+  if (res.status === 401 && token && cleanEndpoint !== '/auth/login' && getStoredAuthToken() === token) {
+    clearStoredSession();
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('sems:unauthorized'));
+  }
+  return res;
 }
+
+async function jsonRequest(method: string, path: string, body?: unknown): Promise<any> {
+  const res = await apiFetch(path, {
+    method,
+    headers: JSON_HEADERS,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) throw new ApiError(await readError(res), res.status);
+  return res.json().catch(() => null);
+}
+
+/* ------------------------------- Auth ------------------------------- */
 
 export interface AuthLoginResponse {
   success: boolean;
@@ -122,238 +196,146 @@ export interface AuthRegisterParams {
   password?: string;
 }
 
+export function mapBackendUser(me: any): UserAccount {
+  return {
+    id: String(me.id),
+    name: me.full_name,
+    primaryEmail: me.primary_email,
+    secondaryEmail: me.secondary_email || '',
+    role: me.role as DashboardRole,
+    department: me.department || '',
+    rollNumber: me.roll_number || undefined,
+    institutionAffiliation: me.institution || me.position_title || '',
+    status: me.is_active === false ? 'suspended' : 'active',
+    createdAt: me.created_at || new Date().toISOString(),
+    lastActive: 'Just now',
+  };
+}
+
 export const authApi = {
-  /**
-   * OAuth2 / FastAPI compliant form-urlencoded login:
-   * username = email, password = password
-   * Returns { access_token, token_type }, then fetches GET /auth/me
-   */
+  /** POST /auth/login (form-urlencoded) then GET /auth/me. Local mock accounts ONLY if the backend is unreachable. */
   async login(email: string, password: string): Promise<AuthLoginResponse> {
     const normalizedEmail = email.trim().toLowerCase();
-    const baseUrl = getApiBaseUrl();
-
-    // 1. Try Backend Tunnel if configured or available
+    let res: Response | null = null;
     try {
-      const formData = new URLSearchParams();
-      formData.append('username', normalizedEmail);
-      formData.append('password', password);
+      const form = new URLSearchParams();
+      form.append('username', normalizedEmail);
+      form.append('password', password);
+      res = await apiFetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form.toString(),
+      });
+    } catch {
+      res = null; // unreachable or not configured
+    }
 
-      // Try FastAPI standard /auth/login or /api/auth/login
-      const endpoints = ['/auth/login', '/api/auth/login', '/login'];
-      let res: Response | null = null;
-      let usedEndpoint = '';
-
-      for (const ep of endpoints) {
-        try {
-          const attempt = await apiFetch(ep, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: formData.toString(),
-          });
-          if (attempt.ok || attempt.status === 400 || attempt.status === 401 || attempt.status === 422) {
-            res = attempt;
-            usedEndpoint = ep;
-            break;
-          }
-        } catch {
-          // If network failed for this endpoint, continue loop
-        }
+    if (res) {
+      // The backend answered: its answer is final (wrong password, deactivated account, server error...)
+      if (!res.ok) return { success: false, error: await readError(res), isBackendConnected: true };
+      const data = await res.json().catch(() => null);
+      if (!data?.access_token) {
+        return { success: false, error: 'Invalid server response.', isBackendConnected: true };
       }
-
-      if (res && res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data && data.access_token) {
-          const token = data.access_token;
-          setStoredAuthToken(token);
-
-          // 2. Fetch user details from GET /auth/me with Bearer token
-          let userProfile: UserAccount | null = null;
-          try {
-            const meRes = await apiFetch('/auth/me', {
-              method: 'GET',
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            });
-            if (meRes.ok) {
-              const meData = await meRes.json().catch(() => null);
-              if (meData) {
-                userProfile = {
-                  id: meData.id ? String(meData.id) : `usr-${Date.now()}`,
-                  name: meData.full_name || meData.name || normalizedEmail.split('@')[0],
-                  primaryEmail: meData.primary_email || meData.email || meData.primaryEmail || normalizedEmail,
-                  secondaryEmail: meData.secondary_email || meData.secondaryEmail || meData.recovery_email || '',
-                  role: (meData.role as DashboardRole) || 'student',
-                  department: meData.department || 'Academic Department',
-                  rollNumber: meData.roll_number || meData.rollNumber,
-                  institutionAffiliation: meData.position_title || meData.institutionAffiliation || meData.affiliation || 'SEMS Campus',
-                  status: 'active',
-                  createdAt: meData.created_at || new Date().toISOString(),
-                  lastActive: 'Just now',
-                };
-              }
-            }
-          } catch {
-            // me endpoint failed
-          }
-
-          if (!userProfile) {
-            // Construct fallback user profile from token/login info
-            userProfile = {
-              id: `usr-remote-${Date.now()}`,
-              name: normalizedEmail.split('@')[0],
-              primaryEmail: normalizedEmail,
-              secondaryEmail: '',
-              department: 'Academic Affairs',
-              role: 'student',
-              status: 'active',
-              createdAt: new Date().toISOString(),
-              lastActive: 'Just now',
-            };
-          }
-
-          return {
-            success: true,
-            user: userProfile,
-            accessToken: token,
-            tokenType: data.token_type || 'bearer',
-            isBackendConnected: true,
-          };
-        } else if (data && data.user) {
-          // Alternative backend returning user directly
-          return {
-            success: true,
-            user: data.user,
-            isBackendConnected: true,
-          };
-        } else {
-          return {
-            success: false,
-            error: data?.detail || data?.message || 'Invalid server response structure.',
-          };
-        }
-      } else if (res && (res.status === 400 || res.status === 401 || res.status === 422)) {
-        const errorData = await res.json().catch(() => null);
-        const errorMsg =
-          (Array.isArray(errorData?.detail) ? errorData.detail.map((d: any) => d.msg).join(', ') : errorData?.detail) ||
-          errorData?.message ||
-          'Authentication failed. Invalid email or password.';
+      const token = data.access_token as string;
+      setStoredAuthToken(token);
+      const meRes = await apiFetch('/auth/me', { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+      if (!meRes || !meRes.ok) {
+        setStoredAuthToken(null);
         return {
           success: false,
-          error: errorMsg,
+          error: meRes ? await readError(meRes) : 'Could not load your profile.',
           isBackendConnected: true,
         };
       }
-    } catch {
-      // Backend tunnel unreachable
-    }
-
-    // 3. Fallback to local accounts in userService (for standalone prototype & offline testing)
-    const localAuth = userService.authenticate(normalizedEmail, password);
-    if (localAuth.success && localAuth.user) {
+      const me = await meRes.json();
       return {
         success: true,
-        user: localAuth.user,
-        isBackendConnected: false,
+        user: mapBackendUser(me),
+        accessToken: token,
+        tokenType: data.token_type || 'bearer',
+        isBackendConnected: true,
       };
     }
 
+    // Backend unreachable: offline prototype accounts (UI shows the Offline / Mock badge)
+    setStoredAuthToken(null);
+    if (!DEMO_MODE) {
+      return { success: false, error: 'Cannot reach the server. Please try again in a moment.' };
+    }
+    const localAuth = userService.authenticate(normalizedEmail, password);
+    if (localAuth.success && localAuth.user) {
+      return { success: true, user: localAuth.user, isBackendConnected: false };
+    }
     return {
       success: false,
-      error:
-        localAuth.error ||
-        (baseUrl
-          ? 'Unable to connect to backend tunnel. Please check if tunnel is running.'
-          : 'Invalid credentials. Please verify your email and password.'),
+      error: localAuth.error || 'Unable to reach the backend. Check that it is running and the URL is set.',
     };
   },
 
-  /**
-   * JSON signup flow:
-   * Fixed to POST /auth/signup (FastAPI schema: full_name, primary_email, password, secondary_email, position_title)
-   * Always creates a student account.
-   */
+  /** POST /auth/signup (JSON). Always creates a student. Roll number / department are set later via updateProfile. */
   async register(
     params: AuthRegisterParams
   ): Promise<{ success: boolean; user?: UserAccount; isBackendConnected?: boolean; error?: string }> {
     const normalizedEmail = params.primaryEmail.trim().toLowerCase();
-
+    let res: Response | null = null;
     try {
-      const res = await apiFetch('/auth/signup', {
+      res = await apiFetch('/auth/signup', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: JSON_HEADERS,
         body: JSON.stringify({
           full_name: params.name.trim(),
           primary_email: normalizedEmail,
           password: params.password,
           secondary_email: params.secondaryEmail?.trim() || null,
-          position_title: params.affiliation?.trim() || params.department?.trim() || 'Student',
+          position_title: params.affiliation?.trim() || 'Student',
         }),
       });
-
-      if (res && (res.ok || res.status === 201)) {
-        const data = await res.json().catch(() => null);
-        const newUser: UserAccount = {
-          id: data?.id ? String(data.id) : `usr-${Date.now()}`,
-          name: data?.full_name || data?.name || params.name,
-          primaryEmail: data?.primary_email || data?.email || normalizedEmail,
-          secondaryEmail: data?.secondary_email || params.secondaryEmail || '',
-          role: (data?.role as DashboardRole) || 'student',
-          department: params.department || 'Academic Department',
-          rollNumber: params.rollNumber,
-          institutionAffiliation: data?.position_title || params.affiliation || 'SEMS Campus',
-          status: 'active',
-          createdAt: new Date().toISOString(),
-          lastActive: 'Just now',
-        };
-        // Mirror in local storage so offline access works
-        userService.registerUser(params);
-        return { success: true, user: newUser, isBackendConnected: true };
-      } else if (res && (res.status === 400 || res.status === 409 || res.status === 422)) {
-        const errData = await res.json().catch(() => null);
-        const msg =
-          (Array.isArray(errData?.detail)
-            ? errData.detail.map((d: any) => `${d.loc?.slice(-1)[0] || 'Field'}: ${d.msg}`).join(', ')
-            : errData?.detail) ||
-          errData?.message ||
-          'Registration was rejected by the backend server.';
-        return { success: false, error: msg, isBackendConnected: true };
-      }
     } catch {
-      // Backend tunnel unreachable, fall back to local mock storage
+      res = null;
     }
 
-    // Local fallback registration
+    if (res) {
+      if (!res.ok) return { success: false, error: await readError(res), isBackendConnected: true };
+      const data = await res.json().catch(() => null);
+      const user = data ? mapBackendUser(data) : undefined;
+      if (user) {
+        user.department = params.department || user.department;
+        user.rollNumber = params.rollNumber || user.rollNumber;
+      }
+      return { success: true, user, isBackendConnected: true };
+    }
+
+    if (!DEMO_MODE) {
+      return { success: false, error: 'Cannot reach the server. Please try again in a moment.' };
+    }
     const registered = userService.registerUser(params);
     return { success: true, user: registered, isBackendConnected: false };
   },
 
-  /**
-   * Healthcheck helper to verify tunnel connectivity
-   */
+  /** PATCH /auth/me */
+  async updateProfile(patch: {
+    positionTitle?: string;
+    rollNumber?: string;
+    department?: string;
+    phone?: string;
+    institution?: string;
+  }): Promise<UserAccount> {
+    const body: Record<string, string> = {};
+    if (patch.positionTitle !== undefined) body.position_title = patch.positionTitle;
+    if (patch.rollNumber !== undefined) body.roll_number = patch.rollNumber;
+    if (patch.department !== undefined) body.department = patch.department;
+    if (patch.phone !== undefined) body.phone = patch.phone;
+    if (patch.institution !== undefined) body.institution = patch.institution;
+    return mapBackendUser(await jsonRequest('PATCH', '/auth/me', body));
+  },
+
   async checkHealth(): Promise<{ ok: boolean; statusText: string; url: string }> {
     const url = getApiBaseUrl();
-    if (!url) {
-      return { ok: false, statusText: 'No tunnel URL configured (using local mock data)', url: '' };
-    }
-
+    if (!url) return { ok: false, statusText: 'No backend URL configured (using local mock data)', url: '' };
     try {
-      const endpoints = ['/health', '/docs', '/api/health', '/'];
-      for (const ep of endpoints) {
-        try {
-          const res = await apiFetch(ep, { method: 'GET' });
-          if (res.ok || res.status === 404 || res.status === 401) {
-            return { ok: true, statusText: `Connected (${res.status} ${res.statusText})`, url };
-          }
-        } catch {
-          // Try next
-        }
-      }
-      return { ok: false, statusText: 'Tunnel URL reachable but returned unexpected response', url };
+      const res = await apiFetch('/health');
+      return { ok: res.ok, statusText: res.ok ? 'Connected' : `Unexpected response (${res.status})`, url };
     } catch (e: any) {
       return { ok: false, statusText: `Connection failed: ${e?.message || 'Network error'}`, url };
     }
@@ -364,201 +346,309 @@ export const authApi = {
   },
 };
 
-/**
- * Normalizes backend session payload into frontend SessionItem model.
- * Handles speaker, registered_count, and meeting_link (null unless authenticated / confirmed registration).
- */
+/* ---------------------------- Mappers ---------------------------- */
+
+interface EventMeta {
+  registrationDeadline?: string;
+  category?: string;
+  organizer?: string;
+  description?: string;
+  eventCapacity?: number | null;
+}
+
+function fmtDate(iso: string, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+function fmtTime(iso: string, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
+  } catch {
+    return iso.slice(11, 16);
+  }
+}
+
+/** Backend session -> SessionItem. meeting_link is null unless admin or CONFIRMED registrant. */
 export function mapBackendSession(
   raw: any,
   defaultEventId?: string,
-  defaultEventTitle?: string
+  defaultEventTitle?: string,
+  meta?: EventMeta
 ): SessionItem {
-  const eventId = String(raw.event_id || raw.eventId || defaultEventId || '');
-  const meetingLink = raw.meeting_link ?? raw.meetingLink ?? raw.meetingUrl ?? null;
-  const speaker = raw.speaker ?? raw.speaker_name ?? raw.speakerName ?? null;
-  const registeredCount =
-    raw.registered_count !== undefined && raw.registered_count !== null
-      ? Number(raw.registered_count)
-      : raw.registeredCount !== undefined && raw.registeredCount !== null
-      ? Number(raw.registeredCount)
-      : raw.attendanceCount;
+  const startsAt: string | undefined = raw.starts_at ?? raw.start_time ?? raw.startTime;
+  const endsAt: string | undefined = raw.ends_at ?? raw.end_time ?? raw.endTime;
+  const tz: string = raw.timezone || 'Asia/Karachi';
+  const registered = Number(raw.registered_count ?? 0);
+  const sessionFee = Number(raw.fee_amount ?? 0);
+  const cap = raw.capacity ?? meta?.eventCapacity ?? null;
+  const numericCapacity = Number(cap);
+  const totalSeats = Number.isFinite(numericCapacity) && numericCapacity > 0 ? numericCapacity : undefined;
+  const seatsRemaining = totalSeats !== undefined ? Math.max(totalSeats - registered, 0) : undefined;
+  const rawLinks = Array.isArray(raw.meeting_links)
+    ? raw.meeting_links.filter((link: any) => link && typeof link.url === 'string')
+    : [];
+  const meetingLink = raw.meeting_link ?? rawLinks.find((link: any) => link.public !== false)?.url ?? rawLinks[0]?.url ?? null;
+
+  const now = Date.now();
+  const startMs = startsAt ? new Date(startsAt).getTime() : NaN;
+  const endMs = endsAt ? new Date(endsAt).getTime() : NaN;
+  const deadlineMs = meta?.registrationDeadline ? new Date(meta.registrationDeadline).getTime() : NaN;
+
+  let status: SessionStatus = 'open';
+  if (!isNaN(endMs) && now > endMs) status = 'closed';
+  else if (!isNaN(deadlineMs) && now > deadlineMs) status = 'closed';
+  else if (seatsRemaining === 0) status = 'closed';
+  else if (
+    (seatsRemaining !== undefined && seatsRemaining <= 3) ||
+    (!isNaN(deadlineMs) && deadlineMs - now < 24 * 3600 * 1000)
+  ) {
+    status = 'closing_soon';
+  }
+
+  let deliveryStatus: 'UPCOMING' | 'LIVE' | 'COMPLETED' = 'UPCOMING';
+  if (!isNaN(endMs) && now > endMs) deliveryStatus = 'COMPLETED';
+  else if (!isNaN(startMs) && now >= startMs) deliveryStatus = 'LIVE';
 
   return {
-    id: String(raw.id || raw.session_id || raw._id || `sess-${Date.now()}`),
-    eventId,
-    parentEventTitle: raw.parent_event_title || raw.parentEventTitle || defaultEventTitle,
-    title: raw.title || raw.name || 'Untitled Session',
-    society: raw.society || raw.department || 'Campus Society',
-    date: raw.date || (raw.start_time ? String(raw.start_time).split('T')[0] : '2026-10-20'),
-    time:
-      raw.time ||
-      (raw.start_time && raw.end_time
-        ? `${String(raw.start_time).includes('T') ? String(raw.start_time).split('T')[1].slice(0, 5) : raw.start_time} - ${String(raw.end_time).includes('T') ? String(raw.end_time).split('T')[1].slice(0, 5) : raw.end_time}`
-        : '14:00 - 16:00'),
-    startTime: raw.start_time || raw.startTime,
-    endTime: raw.end_time || raw.endTime,
-    location: raw.location || raw.venue || 'Campus Auditorium',
+    id: String(raw.id),
+    eventId: String(raw.event_id ?? defaultEventId ?? ''),
+    parentEventTitle: defaultEventTitle,
+    title: raw.title || 'Untitled Session',
+    society: meta?.organizer || 'Campus Society',
+    date: startsAt ? fmtDate(startsAt, tz) : '',
+    time: startsAt && endsAt ? `${fmtTime(startsAt, tz)} - ${fmtTime(endsAt, tz)}` : '',
+    startTime: startsAt,
+    endTime: endsAt,
+    location: raw.location || 'TBA',
     meetingUrl: meetingLink || undefined,
     meeting_link: meetingLink,
-    speaker: speaker,
-    registered_count:
-      typeof registeredCount === 'number' && !isNaN(registeredCount) ? registeredCount : undefined,
-    status: (raw.status as SessionStatus) || 'open',
-    capacity:
-      raw.capacity ||
-      (typeof registeredCount === 'number'
-        ? `${registeredCount} registered`
-        : undefined),
-    totalSeats: raw.total_seats ?? raw.totalSeats,
-    seatsRemaining: raw.seats_remaining ?? raw.seatsRemaining,
-    category: raw.category,
-    description: raw.description || '',
-    wing: raw.wing,
-    registrationRequired: Boolean(raw.registration_required ?? raw.registrationRequired ?? true),
-    registrationDeadline: raw.registration_deadline || raw.registrationDeadline,
-    paymentDeadline: raw.payment_deadline || raw.paymentDeadline,
-    isPaid: Boolean(raw.is_paid ?? raw.isPaid),
-    amount: Number(raw.amount ?? raw.fee ?? 0),
-    deliveryStatus: raw.delivery_status || raw.deliveryStatus || 'UPCOMING',
-    resources: raw.resources || [],
-    tasks: raw.tasks || [],
-    comments: raw.comments || [],
+    meeting_links: rawLinks,
+    speaker: raw.speaker ?? null,
+    registered_count: registered,
+    status,
+    capacity: totalSeats !== undefined
+      ? `${registered} / ${totalSeats} slots filled`
+      : `${registered} registered`,
+    totalSeats,
+    seatsRemaining,
+    timezone: tz,
+    isOnline: Boolean(meetingLink) || rawLinks.length > 0,
+    category: meta?.category,
+    description: raw.description || meta?.description || '',
+    registrationRequired: true,
+    registrationDeadline: meta?.registrationDeadline,
+    isPaid: sessionFee > 0,
+    amount: sessionFee,
+    paymentDetails: sessionPaymentDetails(raw),
+    deliveryStatus,
+    resources: [],
+    tasks: [],
+    comments: [],
+  } as SessionItem;
+}
+
+function sessionPaymentDetails(raw: any): PaymentDetails | undefined {
+  if (!raw.account_title && !raw.account_number) return undefined;
+  return {
+    method: raw.payment_method ?? undefined,
+    accountTitle: raw.account_title ?? undefined,
+    accountNumber: raw.account_number ?? undefined,
+    instructions: raw.payment_instructions ?? undefined,
   };
 }
 
-/**
- * Normalizes backend event payload into frontend EventItem model.
- */
-export function mapBackendEvent(raw: any): EventItem {
-  const eventId = String(raw.id || raw.event_id || raw._id || `evt-${Date.now()}`);
-  const eventTitle = raw.title || raw.name || 'Untitled Event';
-  const rawSessions = Array.isArray(raw.sessions)
-    ? raw.sessions
-    : Array.isArray(raw.items)
-    ? raw.items
-    : [];
-
+/** Backend event (+ its sessions) -> EventItem. DRAFT is shown as PENDING_APPROVAL (super admin publishes). */
+export function mapBackendEvent(raw: any, rawSessions: any[] = []): EventItem {
+  const eventId = String(raw.id);
+  const title: string = raw.title || 'Untitled Event';
+  const feeAmount = Number(raw.fee_amount ?? 0);
+  const meta: EventMeta = {
+    registrationDeadline: raw.registration_deadline ?? undefined,
+    category: raw.category ?? undefined,
+    organizer: raw.organizer ?? undefined,
+    description: raw.description ?? undefined,
+    eventCapacity: raw.capacity ?? null,
+  };
   return {
     id: eventId,
-    title: eventTitle,
+    title,
     description: raw.description || '',
     category: raw.category || 'General',
-    organizer: raw.organizer || raw.organized_by || raw.society || 'University Campus',
-    status: (raw.status as EventStatus) || 'PUBLISHED',
-    bannerUrl: raw.banner_url || raw.bannerUrl || raw.image_url,
-    sessions: rawSessions.map((s: any) => mapBackendSession(s, eventId, eventTitle)),
-    registrationDeadline:
-      raw.registration_deadline || raw.registrationDeadline || new Date().toISOString(),
-    paymentDeadline: raw.payment_deadline || raw.paymentDeadline,
-    isPaid: Boolean(raw.is_paid ?? raw.isPaid),
-    feeAmount: Number(raw.fee_amount ?? raw.feeAmount ?? 0),
-    createdBy: raw.created_by || raw.createdBy || 'System',
-    createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
-    publishedAt: raw.published_at || raw.publishedAt,
-    approvedBy: raw.approved_by || raw.approvedBy,
-    rejectionReason: raw.rejection_reason || raw.rejectionReason,
-  };
+    organizer: raw.organizer || 'University Campus',
+    status: (raw.status === 'DRAFT' ? 'PENDING_APPROVAL' : raw.status) as EventStatus,
+    sessions: rawSessions.map((s) => mapBackendSession(s, eventId, title, meta)),
+    registrationDeadline: raw.registration_deadline || '',
+    isPaid: feeAmount > 0,
+    feeAmount,
+    createdBy: String(raw.created_by ?? 'System'),
+    createdAt: raw.created_at || new Date().toISOString(),
+  } as EventItem;
 }
 
-/**
- * Public Event Browsing API
- * Guests can call without a token.
- * Automatically falls back to mock data when backend tunnel is offline.
- */
+/* ----------------------------- Events API ----------------------------- */
+
+export interface EventFilters {
+  category?: string;
+  locationType?: 'on_campus' | 'virtual' | 'hybrid';
+  isFree?: boolean;
+  dateFrom?: string; // YYYY-MM-DD
+  dateTo?: string;
+}
+
 export const eventsApi = {
-  /**
-   * GET /events
-   * Public list of events. Unauthenticated guests can browse freely.
-   */
-  async getEvents(): Promise<EventItem[]> {
+  /** Live data, or null if the backend is unreachable / not configured. */
+  async fetchLive(filters?: EventFilters): Promise<EventItem[] | null> {
     try {
-      const res = await apiFetch('/events', {
-        method: 'GET',
-      });
-      if (res && res.ok) {
-        const data = await res.json().catch(() => null);
-        const list = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.items)
-          ? data.items
-          : Array.isArray(data?.events)
-          ? data.events
-          : null;
-
-        if (list && list.length > 0) {
-          return list.map((item: any) => mapBackendEvent(item));
-        }
-      }
+      const qs = new URLSearchParams();
+      if (filters?.category) qs.set('category', filters.category);
+      if (filters?.locationType) qs.set('location_type', filters.locationType);
+      if (filters?.isFree !== undefined) qs.set('is_free', String(filters.isFree));
+      if (filters?.dateFrom) qs.set('date_from', filters.dateFrom);
+      if (filters?.dateTo) qs.set('date_to', filters.dateTo);
+      const res = await apiFetch(`/events${qs.toString() ? `?${qs.toString()}` : ''}`);
+      if (!res.ok) return null;
+      const list = await res.json().catch(() => null);
+      if (!Array.isArray(list)) return null;
+      return await Promise.all(
+        list.map(async (e: any) => {
+          try {
+            const sr = await apiFetch(`/events/${e.id}/sessions`);
+            const sessions = sr.ok ? await sr.json() : [];
+            return mapBackendEvent(e, Array.isArray(sessions) ? sessions : []);
+          } catch {
+            return mapBackendEvent(e, []);
+          }
+        })
+      );
     } catch {
-      // Backend unreachable or offline, safe fallback
+      return null;
     }
+  },
 
-    // Return stored/initial mock events
+  /** Live events; mock/cached data only when the backend is unreachable. An empty live list stays empty. */
+  async getEvents(filters?: EventFilters): Promise<EventItem[]> {
+    const live = await this.fetchLive(filters);
+    if (live) return live;
     try {
       const stored = localStorage.getItem('sems_events_data');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {
-      // Safe fallback
+      // ignore
     }
-    return INITIAL_EVENTS;
+    return DEMO_MODE ? INITIAL_EVENTS : [];
   },
 
-  /**
-   * GET /events/{id}
-   * Public event detail. Unauthenticated guests can view details.
-   */
   async getEventById(eventId: string): Promise<EventItem | null> {
     try {
-      const res = await apiFetch(`/events/${encodeURIComponent(eventId)}`, {
-        method: 'GET',
-      });
-      if (res && res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data) {
-          return mapBackendEvent(data);
-        }
+      const res = await apiFetch(`/events/${encodeURIComponent(eventId)}`);
+      if (res.ok) {
+        const raw = await res.json();
+        const sr = await apiFetch(`/events/${encodeURIComponent(eventId)}/sessions`);
+        const sessions = sr.ok ? await sr.json() : [];
+        return mapBackendEvent(raw, Array.isArray(sessions) ? sessions : []);
       }
+      if (res.status === 404) return null;
     } catch {
-      // Backend unreachable or offline, fallback
+      // offline
     }
-
     const all = await this.getEvents();
     return all.find((e) => e.id === eventId) || null;
   },
 
-  /**
-   * GET /events/{id}/sessions
-   * Public sessions under a given event.
-   * Responses include speaker, registered_count, and meeting_link (null unless admin or registered).
-   */
-  async getEventSessions(eventId: string, parentEventTitle?: string): Promise<SessionItem[]> {
-    try {
-      const res = await apiFetch(`/events/${encodeURIComponent(eventId)}/sessions`, {
-        method: 'GET',
-      });
-      if (res && res.ok) {
-        const data = await res.json().catch(() => null);
-        const list = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.sessions)
-          ? data.sessions
-          : Array.isArray(data?.items)
-          ? data.items
-          : [];
+  async getEventSessions(eventId: string): Promise<SessionItem[]> {
+    return (await this.getEventById(eventId))?.sessions ?? [];
+  },
 
-        if (list.length > 0) {
-          return list.map((s: any) => mapBackendSession(s, eventId, parentEventTitle));
-        }
-      }
-    } catch {
-      // Backend unreachable or offline, fallback
+  /* ---- admin writes (throw ApiError with the backend's message) ---- */
+
+  async createEvent(input: {
+    title: string;
+    description?: string;
+    category?: string;
+    organizer?: string;
+    capacity?: number | null;
+    registrationDeadline?: string; // ISO
+    feeAmount?: number;
+    locationType?: 'on_campus' | 'virtual' | 'hybrid';
+  }): Promise<EventItem> {
+    const raw = await jsonRequest('POST', '/events', {
+      title: input.title,
+      description: input.description || null,
+      category: input.category || null,
+      organizer: input.organizer || null,
+      capacity: input.capacity || null,
+      registration_deadline: input.registrationDeadline || null,
+      fee_amount: input.feeAmount ?? 0,
+      location_type: input.locationType || null,
+    });
+    return mapBackendEvent(raw, []);
+  },
+
+  async updateEvent(eventId: string, patch: Record<string, unknown>): Promise<EventItem> {
+    // patch uses backend field names: title, description, category, organizer, capacity,
+    // registration_deadline, fee_amount, location_type
+    const raw = await jsonRequest('PATCH', `/events/${encodeURIComponent(eventId)}`, patch);
+    return mapBackendEvent(raw, []);
+  },
+
+  /** super_admin only. */
+  async publishEvent(eventId: string): Promise<EventItem> {
+    const raw = await jsonRequest('POST', `/events/${encodeURIComponent(eventId)}/publish`);
+    return mapBackendEvent(raw, []);
+  },
+
+  async createSession(
+    eventId: string,
+    input: {
+      title: string;
+      startsAt: string; // ISO
+      endsAt: string; // ISO
+      timezone?: string;
+      location?: string;
+      capacity?: number | null;
+      meetingLink?: string;
+      meetingLinks?: { url: string; platform?: string; label?: string; public?: boolean }[];
+      speaker?: string;
+      feeAmount?: number;
+      paymentDetails?: PaymentDetails;
     }
+  ): Promise<SessionItem> {
+    const raw = await jsonRequest('POST', `/events/${encodeURIComponent(eventId)}/sessions`, {
+      title: input.title,
+      starts_at: input.startsAt,
+      ends_at: input.endsAt,
+      timezone: input.timezone || 'Asia/Karachi',
+      location: input.location || null,
+      capacity: input.capacity || null,
+      meeting_link: input.meetingLink || null,
+      meeting_links: input.meetingLinks && input.meetingLinks.length ? input.meetingLinks : undefined,
+      speaker: input.speaker || null,
+      fee_amount: input.feeAmount ?? 0,
+      payment_method: input.paymentDetails?.method || null,
+      account_title: input.paymentDetails?.accountTitle || null,
+      account_number: input.paymentDetails?.accountNumber || null,
+      payment_instructions: input.paymentDetails?.instructions || null,
+    });
+    return mapBackendSession(raw, eventId);
+  },
 
-    const event = await this.getEventById(eventId);
-    return event?.sessions || [];
+  async updateSession(eventId: string, sessionId: string, patch: Record<string, unknown>): Promise<SessionItem> {
+    // patch uses backend names: title, starts_at, ends_at, timezone, location, capacity, meeting_link, speaker,
+    // fee_amount, payment_method, account_title, account_number, payment_instructions
+    const requestPatch = { ...patch };
+    if (requestPatch.meeting_links === undefined) delete requestPatch.meeting_links;
+    const raw = await jsonRequest(
+      'PATCH',
+      `/events/${encodeURIComponent(eventId)}/sessions/${encodeURIComponent(sessionId)}`,
+      requestPatch
+    );
+    return mapBackendSession(raw, eventId);
   },
 };
-

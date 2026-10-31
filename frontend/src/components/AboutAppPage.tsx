@@ -162,7 +162,7 @@ export const AboutAppPage: React.FC<AboutAppPageProps> = ({
               Eliminate chaotic groups, lost registration forms, and unverifiable certificates.
             </h2>
             <p className="font-inter text-sm sm:text-base text-[var(--text-secondary)] leading-relaxed">
-              Session Management System replaces fragmented spreadsheets with a single authoritative portal. From dynamic field forms to manual fee slip audit, real-time virtual rooms, attendance logging, and verifiable PDF credential issuance, everything runs seamlessly.
+              Session Management System replaces fragmented spreadsheets with a single authoritative portal. From dynamic field forms to manual fee slip audit, external meeting links, attendance logging, and verifiable PDF credential issuance, everything runs seamlessly.
             </p>
           </div>
         </section>

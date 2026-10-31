@@ -17,6 +17,14 @@ import { BackendConnectionModal } from './BackendConnectionModal';
 import { useTheme } from '../context/ThemeContext';
 import { THEME_SWATCHES, THEME_STORAGE_KEY, applyThemeToDocument } from '../data/themes';
 import { DEMO_MODE } from '../config';
+import {
+  INVALID_EMAIL_MESSAGE,
+  INVALID_NAME_MESSAGE,
+  INVALID_ROLL_NUMBER_MESSAGE,
+  isValidEmail,
+  isValidName,
+  isValidRollNumber,
+} from '../utils/validators';
 
 interface LoginPageProps {
   onSuccessLogin: (
@@ -97,18 +105,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
     if (authMode === 'signup') {
       const trimmedName = name.trim();
-      if (!trimmedName) {
-        newErrors.name = 'Full name is required.';
-      } else if (trimmedName.length < 2) {
-        newErrors.name = 'Please enter your full legal name.';
-      }
+      if (!isValidName(trimmedName)) newErrors.name = INVALID_NAME_MESSAGE;
 
       // Student-specific signup fields
       if (accountType === 'student') {
         const trimmedRoll = rollNumber.trim();
-        if (!trimmedRoll) {
-          newErrors.rollNumber = 'Student roll number / registration ID is required.';
-        }
+        if (!isValidRollNumber(trimmedRoll)) newErrors.rollNumber = INVALID_ROLL_NUMBER_MESSAGE;
         if (!department.trim()) {
           newErrors.department = 'Academic department is required.';
         }
@@ -123,24 +125,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
       newErrors.email = 'Email address is required.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      newErrors.email = 'Please enter a valid email address.';
+    } else if (!isValidEmail(trimmedEmail)) {
+      newErrors.email = 'Enter a valid email address.';
     }
 
     if (authMode === 'signup') {
-      if (accountType === 'student') {
+      if (secondaryEmail.trim()) {
         const trimmedSecondary = secondaryEmail.trim();
-        if (!trimmedSecondary) {
-          newErrors.secondaryEmail = 'Personal recovery email is required for graduation ledger sync.';
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedSecondary)) {
-          newErrors.secondaryEmail = 'Please enter a valid recovery email address.';
-        } else if (trimmedSecondary.toLowerCase() === trimmedEmail.toLowerCase()) {
-          newErrors.secondaryEmail = 'Recovery email must differ from university primary email.';
-        }
-      } else if (accountType === 'guest' && secondaryEmail.trim()) {
-        const trimmedSecondary = secondaryEmail.trim();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedSecondary)) {
-          newErrors.secondaryEmail = 'Please enter a valid secondary email address.';
+        if (!isValidEmail(trimmedSecondary)) {
+          newErrors.secondaryEmail = INVALID_EMAIL_MESSAGE;
         } else if (trimmedSecondary.toLowerCase() === trimmedEmail.toLowerCase()) {
           newErrors.secondaryEmail = 'Secondary email must differ from primary email.';
         }
@@ -149,8 +142,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
     if (!password) {
       newErrors.password = 'Password is required.';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters.';
+    } else if (password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters.';
     }
 
     if (authMode === 'signup') {
@@ -197,7 +190,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         // Credentials successfully verified
         setSuccessMessage(
           authResult.isBackendConnected
-            ? 'Backend Tunnel verified! Signing in...'
+            ? (import.meta.env.DEV ? 'Backend Tunnel verified! Signing in...' : 'Signing in...')
             : 'Signed in via Offline / Mock Mode (local fallback)...'
         );
         setTimeout(() => {
@@ -260,7 +253,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         const createdAccount = regResult.user;
         setSuccessMessage(
           regResult.isBackendConnected
-            ? 'Account registered on Backend Tunnel! Redirecting to dashboard...'
+            ? (import.meta.env.DEV ? 'Account registered on Backend Tunnel! Redirecting to dashboard...' : 'Account registered! Redirecting to dashboard...')
             : 'Registered in Offline / Mock Mode! Redirecting to dashboard...'
         );
         setTimeout(() => {
@@ -297,14 +290,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     if (field === 'password') setPassword(val);
     if (field === 'confirmPassword') setConfirmPassword(val);
 
-    if (errors[field] || errors.auth) {
-      setErrors((prev) => {
-        const copy = { ...prev };
-        delete copy[field];
-        delete copy.auth;
-        return copy;
-      });
-    }
+    setErrors((prev) => {
+      const copy = { ...prev };
+      delete copy[field];
+      delete copy.auth;
+      if (field === 'email' && val.trim() && !isValidEmail(val)) {
+        copy.email = INVALID_EMAIL_MESSAGE;
+      }
+      if (field === 'secondaryEmail' && val.trim() && !isValidEmail(val)) {
+        copy.secondaryEmail = INVALID_EMAIL_MESSAGE;
+      }
+      return copy;
+    });
   };
 
   const fillDemoAccount = (role: 'super_admin' | 'admin' | 'student' | 'guest') => {
@@ -328,7 +325,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   return (
     <div
       id="login-page-theme-container"
-      className="relative w-full min-h-[100dvh] flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 overflow-hidden bg-[var(--bg-start)] text-white transition-colors duration-500"
+      className="relative w-full min-h-[100dvh] md:h-[100dvh] flex flex-col items-center justify-center p-4 sm:p-6 md:py-4 lg:px-8 overflow-x-hidden md:overflow-hidden bg-[var(--bg-start)] text-white transition-colors duration-500"
     >
       {/* ========================================================
           DYNAMIC AMBIENT GLOWS & ORBS (Reflecting Active Theme)
@@ -355,7 +352,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       />
 
       {/* Top Bar: View Sessions, About, and Theme Switcher */}
-      <div className="w-full max-w-4xl mb-4 flex items-center justify-between z-20">
+      <div className="w-full max-w-4xl mb-3 flex items-center justify-between z-20">
         <div className="flex items-center gap-2.5">
           <button
             type="button"
@@ -379,6 +376,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             <span>About</span>
           </button>
 
+          {import.meta.env.DEV && (
+            <>
           <button
             type="button"
             onClick={() => setShowTunnelModal(true)}
@@ -409,6 +408,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <span>Offline / Mock Mode</span>
             </div>
           ) : null}
+            </>
+          )}
         </div>
 
         {/* Quick Theme Switcher on Login Page */}
@@ -519,7 +520,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           {/* ========================================================
               LEFT COLUMN: Welcome Back & Tagline
              ======================================================== */}
-          <div className="p-8 sm:p-12 lg:p-14 flex flex-col justify-center border-b md:border-b-0 md:border-r border-white/[0.16] relative bg-white/[0.03]">
+          <div className="p-6 sm:p-8 lg:p-10 flex flex-col justify-center border-b md:border-b-0 md:border-r border-white/[0.16] relative bg-white/[0.03]">
             <div className="space-y-5">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.10] border border-white/[0.20] text-[11px] font-inter text-[var(--primary-accent)] backdrop-blur-md shadow-sm">
                 <Sparkles className="w-3 h-3 text-[var(--primary-accent)]" />
@@ -532,13 +533,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 Back
               </h1>
 
-              {/* Tagline */}
-              <p className="font-inter font-normal text-sm sm:text-base text-[var(--text-sec-80)] tracking-wide leading-relaxed">
-                Session Management System
-              </p>
-
               <p className="font-inter text-xs text-white/60 leading-relaxed max-w-xs">
-                Log in to discover sessions, enter live virtual rooms, submit vouchers, and claim verified credentials.
+                Log in to discover sessions, join live meetings, submit vouchers, and claim verified credentials.
               </p>
             </div>
           </div>
@@ -546,7 +542,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           {/* ========================================================
               RIGHT COLUMN: Underline Dividers, Minimal Fields & Sign In/Up
              ======================================================== */}
-          <div className="p-8 sm:p-12 flex flex-col justify-center bg-black/[0.12] backdrop-blur-xl">
+          <div className="p-6 sm:p-8 lg:p-10 flex flex-col justify-center bg-black/[0.12] backdrop-blur-xl">
             {/* Top Distinct Horizontal Lines and Header */}
             <div className="mb-6">
               <div className="w-full border-t border-white/[0.35]" />
@@ -592,13 +588,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               </div>
 
               <div className="w-full border-t border-white/[0.35]" />
-            </div>
-
-            {/* Prototype Badge */}
-            <div className="mb-4 flex items-center justify-center">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-mono tracking-tight">
-                Demo / Prototype Authentication — Real credential validation active
-              </span>
             </div>
 
             {/* If Sign Up: Account Type Selector */}
@@ -666,8 +655,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     autoComplete="name"
                     value={name}
                     onChange={(e) => handleInputChange('name', e.target.value)}
+                    maxLength={100}
                     placeholder={accountType === 'student' ? 'e.g. Jordan Lee' : 'e.g. Dr. Sarah Connor'}
-                    className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                    className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
                   {errors.name && (
                     <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -692,9 +682,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       id="auth-roll"
                       type="text"
                       value={rollNumber}
-                      onChange={(e) => handleInputChange('rollNumber', e.target.value)}
-                      placeholder="e.g. 2024-CS-42"
-                      className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                      onChange={(e) => handleInputChange('rollNumber', e.target.value.replace(/\D/g, ''))}
+                      inputMode="numeric"
+                      maxLength={15}
+                      placeholder="e.g. 202442"
+                      className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                     />
                     {errors.rollNumber && (
                       <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -717,7 +709,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       value={department}
                       onChange={(e) => handleInputChange('department', e.target.value)}
                       placeholder="e.g. Software Engineering"
-                      className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                      className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                     />
                     {errors.department && (
                       <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -744,7 +736,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     value={affiliation}
                     onChange={(e) => handleInputChange('affiliation', e.target.value)}
                     placeholder="e.g. Autonomous Robotics Labs Inc. / External Guest"
-                    className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                    className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
                   {errors.affiliation && (
                     <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -777,6 +769,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   autoComplete="email"
                   value={email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
+                  onBlur={() => {
+                    if (!isValidEmail(email)) setErrors((prev) => ({ ...prev, email: INVALID_EMAIL_MESSAGE }));
+                  }}
+                  maxLength={254}
                   placeholder={
                     authMode === 'signup'
                       ? accountType === 'student'
@@ -784,7 +780,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         : 'e.g. sarah.connor@industrytech.io'
                       : 'e.g. student@university.edu.pk or your email'
                   }
-                  className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                  className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                 />
                 {errors.email && (
                   <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -794,7 +790,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 )}
               </div>
 
-              {/* Secondary Email (Required for Student recovery, Optional for Guest) */}
+              {/* Optional secondary email */}
               {authMode === 'signup' && (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
@@ -802,14 +798,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       htmlFor="auth-sec-email"
                       className="block font-inter text-[12px] text-white/90"
                     >
-                      {accountType === 'student' ? (
-                        <>Permanent Recovery Email <span className="text-rose-400">*</span></>
-                      ) : (
-                        'Backup Personal Email (Optional)'
-                      )}
+                      Backup Personal Email (Optional)
                     </label>
                     <span className="text-[10px] text-[var(--text-sec-80)]">
-                      {accountType === 'student' ? 'For graduation ledger sync' : 'Must differ from primary'}
+                      Must differ from primary
                     </span>
                   </div>
                   <input
@@ -817,8 +809,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     type="email"
                     value={secondaryEmail}
                     onChange={(e) => handleInputChange('secondaryEmail', e.target.value)}
+                    onBlur={() => {
+                      if (secondaryEmail.trim() && !isValidEmail(secondaryEmail)) {
+                        setErrors((prev) => ({ ...prev, secondaryEmail: INVALID_EMAIL_MESSAGE }));
+                      }
+                    }}
+                    maxLength={254}
                     placeholder="e.g. personal.recovery@gmail.com"
-                    className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                    className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
                   {errors.secondaryEmail && (
                     <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -855,8 +853,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
                     value={password}
                     onChange={(e) => handleInputChange('password', e.target.value)}
+                    minLength={8}
                     placeholder="••••••••"
-                    className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 pr-8 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                    className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-10 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
                   <button
                     type="button"
@@ -889,7 +888,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     value={confirmPassword}
                     onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-transparent border-0 border-b border-white/[0.45] focus:border-white focus:outline-none py-1.5 text-white placeholder-white/35 text-sm font-inter transition-colors"
+                    className="w-full bg-white/[0.06] rounded-xl border border-white/[0.35] focus:border-white focus:outline-none pl-3 pr-3 py-2 text-white placeholder-white/35 text-sm font-inter transition-colors"
                   />
                   {errors.confirmPassword && (
                     <p className="text-[11px] text-rose-300 flex items-center gap-1 mt-1">
@@ -905,7 +904,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 <button
                   id="btn-auth-submit"
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || Object.keys(errors).length > 0}
                   className="px-8 py-2.5 rounded-xl bg-[var(--primary-accent)] hover:brightness-110 border border-white/[0.30] text-white font-semibold text-xs tracking-widest uppercase transition-all shadow-lg active:scale-95 cursor-pointer backdrop-blur-xl disabled:opacity-50"
                   style={{
                     boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 6px 20px var(--accent-30, rgba(0, 0, 0, 0.25))',
@@ -1035,10 +1034,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         </div>
       </div>
 
+      {import.meta.env.DEV && (
       <BackendConnectionModal
         isOpen={showTunnelModal}
         onClose={() => setShowTunnelModal(false)}
       />
+      )}
     </div>
   );
 };

@@ -71,6 +71,12 @@ class EventSession(Base):
     capacity = Column(Integer, nullable=True)  # falls back to Event.capacity if not set
     meeting_link = Column(String, nullable=True)
     speaker = Column(String, nullable=True)
+    meeting_links = Column(JSON(none_as_null=True), nullable=True)
+    fee_amount = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")  # 0 = free session
+    payment_method = Column(String, nullable=True)
+    account_title = Column(String, nullable=True)
+    account_number = Column(String(34), nullable=True)
+    payment_instructions = Column(Text, nullable=True)
 
     registrations = relationship("Registration", viewonly=True)
 

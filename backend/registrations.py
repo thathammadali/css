@@ -84,7 +84,7 @@ def register_for_session(
             raise HTTPException(status_code=400, detail="This event requires a registration form.")
         answers = validate_answers(event.form_schema, data.answers)
 
-    initial_status = "CONFIRMED" if event.fee_amount == 0 else "PAYMENT_PENDING"
+    initial_status = "CONFIRMED" if event_session.fee_amount == 0 else "PAYMENT_PENDING"
     registration = Registration(session_id=session_id, user_id=user.id, status=initial_status)
     if answers is not None:
         registration.answers = answers

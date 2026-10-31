@@ -4,8 +4,10 @@
  */
 
 import { EventItem, SessionItem, EventStatus, DashboardRole, SessionRecordingStatus } from '../types';
+import { DEMO_MODE } from '../config';
 import { INITIAL_EVENTS } from '../data/mockEvents';
 import { notificationService } from './notificationService';
+import { eventsApi } from './apiClient';
 
 const EVENTS_STORAGE_KEY = 'sems_events_data';
 
@@ -33,6 +35,8 @@ export const eventService = {
       // Fallback to initial events
     }
 
+    if (!DEMO_MODE) return [];
+
     // Initialize with verified INITIAL_EVENTS
     return INITIAL_EVENTS.map((evt) => ({
       ...evt,
@@ -42,6 +46,17 @@ export const eventService = {
         parentEventTitle: evt.title,
       })),
     }));
+  },
+
+  /** Pull live events from the backend into the local cache the screens read. Returns false if offline. */
+  async refreshFromBackend(): Promise<boolean> {
+    const live = await eventsApi.fetchLive();
+    if (!live) {
+      console.warn('[SEMS] Live events refresh failed; showing cached data.');
+      return false;
+    }
+    this.saveEvents(live);
+    return true;
   },
 
   /**
@@ -443,7 +458,7 @@ export const eventService = {
           recipientEmail: 'all',
           type: 'announcement',
           title: `🎙️ Session LIVE: ${updatedSession.title}`,
-          message: `The virtual meeting room for "${updatedSession.title}" is now broadcasting LIVE! Join now with your room access credentials.`,
+          message: `The virtual meeting for "${updatedSession.title}" is now broadcasting LIVE! Open the session to join.`,
           linkTab: 'sessions',
           entityId: `delivery-live-${updatedSession.id}`,
         });

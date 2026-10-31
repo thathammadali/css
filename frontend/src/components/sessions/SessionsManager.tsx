@@ -13,6 +13,7 @@ import {
   RegistrationFormConfig,
 } from '../../types';
 import { eventService } from '../../services/eventService';
+import { eventsApi } from '../../services/apiClient';
 import { EventsListPage } from '../events/EventsListPage';
 import { EventDetailPage } from '../events/EventDetailPage';
 import { EventCreatePage } from '../events/EventCreatePage';
@@ -31,7 +32,8 @@ interface SessionsManagerProps {
   currentUserName?: string;
   registrants?: RegistrantItem[];
   onUpdateEvents: (updatedEvents: EventItem[]) => void;
-  onRegisterNewParticipant?: (registrant: RegistrantItem) => void;
+  onRegisterNewParticipant?: (registrant: RegistrantItem) => void | Promise<void>;
+  onReloadRegistrants?: () => Promise<void>;
   onNavigateHome: () => void;
   onNavigateToAuth: (mode?: 'login' | 'signup') => void;
   onNotify: (msg: string) => void;
@@ -51,6 +53,7 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
   registrants,
   onUpdateEvents,
   onRegisterNewParticipant,
+  onReloadRegistrants,
   onNavigateHome,
   onNavigateToAuth,
   onNotify,
@@ -141,39 +144,66 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
   };
 
   const handleOpenRegistration = (session: SessionItem) => {
+    if (currentRole === 'guest') {
+      onNotify('Please sign in before registering for a session.');
+      onNavigateToAuth('login');
+      return;
+    }
     setSelectedSessionId(session.id);
     setSubScreen('register');
   };
 
-  const handleRegistrationSuccess = (registrant: RegistrantItem) => {
+  const handleRegistrationSuccess = async (registrant: RegistrantItem) => {
     if (onRegisterNewParticipant) {
-      onRegisterNewParticipant(registrant);
+      await onRegisterNewParticipant(registrant);
+    } else if (onReloadRegistrants) {
+      await onReloadRegistrants();
     }
     onNotify(
-      `Registration submitted for "${selectedSession?.title || 'Session'}". Receipt sent for review.`
+      `Registration submitted for "${selectedSession?.title || 'Session'}".`
     );
     setSubScreen('detail');
   };
 
   // Event persistence actions
-  const handleSaveEvent = (
+  const handleSaveEvent = async (
     eventData: Omit<EventItem, 'id' | 'createdAt'>,
     existingEventId?: string
   ) => {
-    if (existingEventId) {
-      const updated = eventService.updateEvent(existingEventId, eventData, currentRole);
-      if (updated) {
+    try {
+      if (existingEventId) {
+        const patch: Record<string, unknown> = {
+          title: eventData.title,
+          description: eventData.description ?? null,
+          category: eventData.category ?? null,
+          organizer: eventData.organizer ?? null,
+          capacity: eventData.capacity ?? null,
+          registration_deadline: eventData.registrationDeadline || null,
+          fee_amount: eventData.isPaid ? Number(eventData.feeAmount ?? 0) : 0,
+          location_type: eventData.locationType ?? 'on_campus',
+        };
+        const updated = await eventsApi.updateEvent(existingEventId, patch);
+        await eventService.refreshFromBackend();
         onUpdateEvents(eventService.getEvents());
         onNotify(`Event "${updated.title}" updated.`);
         setSelectedEventId(updated.id);
         setSubScreen('event-detail');
+        return;
       }
-    } else {
-      const created = eventService.createEvent(
-        eventData,
-        currentRole,
-        currentUserEmail || 'admin@university.edu.pk'
-      );
+
+      const created = await eventsApi.createEvent({
+        title: eventData.title,
+        description: eventData.description,
+        category: eventData.category,
+        organizer: eventData.organizer,
+        capacity: eventData.capacity ?? null,
+        registrationDeadline: eventData.registrationDeadline
+          ? eventData.registrationDeadline.replace(/Z$/, '+05:00')
+          : undefined,
+        feeAmount: eventData.isPaid ? Number(eventData.feeAmount ?? 0) : 0,
+        locationType: eventData.locationType ?? 'on_campus',
+      });
+      await eventService.refreshFromBackend();
       onUpdateEvents(eventService.getEvents());
       onNotify(
         currentRole === 'super_admin'
@@ -182,65 +212,97 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
       );
       setSelectedEventId(created.id);
       setSubScreen('event-detail');
+    } catch (error) {
+      throw error;
     }
   };
 
-  const handleApproveEvent = (eventId: string) => {
-    const approved = eventService.approveEvent(
-      eventId,
-      currentRole,
-      currentUserEmail || 'superadmin@university.edu.pk'
-    );
-    if (approved) {
+  const handleApproveEvent = async (eventId: string) => {
+    if (currentRole !== 'super_admin') {
+      onNotify('Unauthorized: Only Super Admin can approve events for publication.');
+      return;
+    }
+
+    try {
+      const approved = await eventsApi.publishEvent(eventId);
+      await eventService.refreshFromBackend();
       onUpdateEvents(eventService.getEvents());
       onNotify(`Event "${approved.title}" approved and published to campus!`);
-    } else {
-      onNotify('Unauthorized: Only Super Admin can approve events for publication.');
-    }
-  };
-
-  const handleRejectEvent = (eventId: string, reason: string) => {
-    const rejected = eventService.rejectEvent(eventId, reason, currentRole);
-    if (rejected) {
-      onUpdateEvents(eventService.getEvents());
-      onNotify(`Event "${rejected.title}" returned to draft.`);
-    } else {
-      onNotify('Unauthorized: Only Super Admin can reject events.');
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to publish event.');
+      throw error;
     }
   };
 
   // Session persistence actions (Strictly tied to parent events)
-  const handleSaveSession = (newOrUpdatedSession: SessionItem) => {
+  const handleSaveSession = async (newOrUpdatedSession: SessionItem) => {
     const targetEventId = newOrUpdatedSession.eventId || selectedEventId;
     if (!targetEventId) {
       onNotify('Error: Session must belong to a parent event.');
       return;
     }
 
-    const existingSession = sessions.find((s) => s.id === newOrUpdatedSession.id);
-    if (existingSession) {
-      const res = eventService.updateSessionInEvent(
-        newOrUpdatedSession.id,
-        newOrUpdatedSession
-      );
-      if (res) {
-        onUpdateEvents(eventService.getEvents());
-        onNotify(`Session "${newOrUpdatedSession.title}" updated.`);
-      }
-    } else {
-      const res = eventService.addSessionToEvent(
-        targetEventId,
-        newOrUpdatedSession
-      );
-      if (res) {
-        onUpdateEvents(eventService.getEvents());
-        onNotify(`New session "${newOrUpdatedSession.title}" added to event.`);
-      }
-    }
+    const dateValue = newOrUpdatedSession.date || '';
+    const startValue = newOrUpdatedSession.startTime || newOrUpdatedSession.time?.split('–')[0]?.trim() || '14:00';
+    const endValue = newOrUpdatedSession.endTime || newOrUpdatedSession.time?.split('–')[1]?.trim() || '17:30';
+    const startsAt = `${dateValue}T${startValue}:00+05:00`;
+    const endsAt = `${dateValue}T${endValue}:00+05:00`;
+    const meetingLinks = newOrUpdatedSession.meeting_links?.map((link) => ({
+      url: link.url,
+      label: link.label ?? undefined,
+      platform: link.platform,
+      public: !!link.public,
+    }));
 
-    setSelectedSessionId(newOrUpdatedSession.id);
-    setSelectedEventId(targetEventId);
-    setSubScreen('detail');
+    try {
+      const existingSession = sessions.find((s) => s.id === newOrUpdatedSession.id);
+      if (existingSession) {
+        const updated = await eventsApi.updateSession(targetEventId, newOrUpdatedSession.id, {
+          title: newOrUpdatedSession.title,
+          starts_at: startsAt,
+          ends_at: endsAt,
+          timezone: 'Asia/Karachi',
+          location: newOrUpdatedSession.location || null,
+          capacity: newOrUpdatedSession.totalSeats ?? null,
+          ...(meetingLinks !== undefined ? { meeting_links: meetingLinks } : {}),
+          speaker: newOrUpdatedSession.speaker || null,
+          fee_amount: newOrUpdatedSession.isPaid ? Number(newOrUpdatedSession.amount ?? 0) : 0,
+          ...(newOrUpdatedSession.isPaid
+            ? {
+                payment_method: newOrUpdatedSession.paymentDetails?.method ?? null,
+                account_title: newOrUpdatedSession.paymentDetails?.accountTitle ?? null,
+                account_number: newOrUpdatedSession.paymentDetails?.accountNumber ?? null,
+                payment_instructions: newOrUpdatedSession.paymentDetails?.instructions ?? null,
+              }
+            : {}),
+        });
+        await eventService.refreshFromBackend();
+        onUpdateEvents(eventService.getEvents());
+        onNotify(`Session "${updated.title}" updated.`);
+      } else {
+        const created = await eventsApi.createSession(targetEventId, {
+          title: newOrUpdatedSession.title,
+          startsAt: startsAt,
+          endsAt: endsAt,
+          timezone: 'Asia/Karachi',
+          location: newOrUpdatedSession.location || undefined,
+          capacity: newOrUpdatedSession.totalSeats ?? null,
+          meetingLinks,
+          speaker: newOrUpdatedSession.speaker || undefined,
+          feeAmount: newOrUpdatedSession.isPaid ? Number(newOrUpdatedSession.amount ?? 0) : 0,
+          paymentDetails: newOrUpdatedSession.isPaid ? newOrUpdatedSession.paymentDetails : undefined,
+        });
+        await eventService.refreshFromBackend();
+        onUpdateEvents(eventService.getEvents());
+        onNotify(`New session "${created.title}" added to event.`);
+      }
+
+      setSelectedSessionId(newOrUpdatedSession.id);
+      setSelectedEventId(targetEventId);
+      setSubScreen('detail');
+    } catch (error) {
+      throw error;
+    }
   };
 
   // =========================================================================
@@ -272,6 +334,7 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
         isRegistered={registeredSessionIds.includes(selectedSession.id)}
         currentUserEmail={currentUserEmail}
         currentUserName={currentUserName}
+        registrants={registrants}
         registrant={registrants?.find(
           (r) =>
             r.sessionId === selectedSession.id &&
@@ -299,6 +362,7 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
         onOpenRegistration={handleOpenRegistration}
         onEditSession={handleNavigateToEditSession}
         onUpdateSession={handleSaveSession}
+        onReloadRegistrants={onReloadRegistrants}
         onNotify={onNotify}
       />
     );
@@ -339,7 +403,6 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
         onAddSessionToEvent={handleNavigateToCreateSession}
         onEditEvent={handleNavigateToEditEvent}
         onApproveEvent={handleApproveEvent}
-        onRejectEvent={handleRejectEvent}
         onNotify={onNotify}
       />
     );
