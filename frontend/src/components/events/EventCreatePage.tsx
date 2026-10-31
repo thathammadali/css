@@ -15,7 +15,6 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { EventItem, DashboardRole, EventStatus } from '../../types';
-import { isMoney } from '../../utils/validators';
 
 const PREDEFINED_CATEGORIES = [
   'Robotics & Hardware',
@@ -70,15 +69,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
       : '2026-10-31'
   );
 
-  // Payment deadline alongside registration deadline
-  const [paymentDeadline, setPaymentDeadline] = useState(
-    initialEvent?.paymentDeadline
-      ? initialEvent.paymentDeadline.split('T')[0]
-      : '2026-11-02'
-  );
-
-  const [isPaid, setIsPaid] = useState(initialEvent?.isPaid || false);
-  const [feeAmount, setFeeAmount] = useState<number>(initialEvent?.feeAmount || 500);
 
   // Status selection (Only Super Admin can select directly)
   const [status, setStatus] = useState<EventStatus>(
@@ -91,7 +81,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
     category?: string;
     organizer?: string;
     registrationDeadline?: string;
-    feeAmount?: string;
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -123,7 +112,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
       category?: string;
       organizer?: string;
       registrationDeadline?: string;
-      feeAmount?: string;
     } = {};
 
     if (title.trim().length < 3 || title.trim().length > 200) {
@@ -143,9 +131,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
     }
     if (!registrationDeadline || Number.isNaN(new Date(`${registrationDeadline}T00:00:00`).getTime())) {
       newErrors.registrationDeadline = 'Registration deadline must be a valid date.';
-    }
-    if (isPaid && (!isMoney(feeAmount) || feeAmount <= 0)) {
-      newErrors.feeAmount = 'Fee must be from 0 to 1,000,000 with at most 2 decimals.';
     }
 
     setErrors(newErrors);
@@ -178,11 +163,8 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
       status: effectiveStatus,
       bannerUrl: bannerUrl.trim() || undefined,
       registrationDeadline: `${registrationDeadline}T23:59:59+05:00`,
-      paymentDeadline: isPaid && paymentDeadline ? `${paymentDeadline}T23:59:59+05:00` : undefined,
       locationType: 'on_campus',
       capacity: null,
-      isPaid,
-      feeAmount: isPaid ? Number(feeAmount) : 0,
       createdBy: initialEvent?.createdBy || currentUserEmail || 'admin@university.edu.pk',
       sessions: initialEvent?.sessions || [],
       publishedAt: effectiveStatus === 'PUBLISHED' ? new Date().toISOString() : undefined,
@@ -447,7 +429,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
             </p>
           </div>
 
-          {/* Registration Deadline, Payment Deadline & Fee Structure */}
+          {/* Registration Deadline */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/[0.08]">
             <div>
               <label className="block text-xs font-medium text-white mb-1.5">
@@ -463,61 +445,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
                 <p className="text-[11px] text-red-400 mt-1">{errors.registrationDeadline}</p>
               )}
             </div>
-
-            <div>
-              <label className="block text-xs font-medium text-white mb-1.5">
-                Event Participation Fee
-              </label>
-              <div className="flex items-center gap-3 h-11">
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-white">
-                  <input
-                    type="checkbox"
-                    checked={isPaid}
-                    onChange={(e) => setIsPaid(e.target.checked)}
-                    className="w-4 h-4 rounded text-[var(--primary-accent)] focus:ring-[var(--primary-accent)]"
-                  />
-                  <span>Requires Registration Fee</span>
-                </label>
-
-                {isPaid && (
-                  <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-white/50">
-                      Rs.
-                    </span>
-                    <input
-                      type="number"
-                      value={feeAmount}
-                      onChange={(e) => setFeeAmount(Number(e.target.value))}
-                      min={0}
-                      max={1000000}
-                      step="0.01"
-                      className="w-full h-10 pl-9 pr-3 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
-                    />
-                  </div>
-                )}
-              </div>
-              {errors.feeAmount && (
-                <p className="text-[11px] text-red-400 mt-1">{errors.feeAmount}</p>
-              )}
-            </div>
-
-            {/* Payment Slip Submission Deadline (Issue 8) */}
-            {isPaid && (
-              <div className="sm:col-span-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                <label className="block text-xs font-medium text-amber-200 mb-1.5">
-                  Payment Slip Submission Deadline
-                </label>
-                <input
-                  type="date"
-                  value={paymentDeadline}
-                  onChange={(e) => setPaymentDeadline(e.target.value)}
-                  className="w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border border-amber-400/30 text-xs sm:text-sm text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
-                />
-                <p className="text-[10px] text-amber-300/80 mt-1">
-                  Enrolled attendees must upload and verify their bank/EasyPaisa receipt before this date.
-                </p>
-              </div>
-            )}
           </div>
 
           {/* Super Admin Status Override (Super Admin Only) */}

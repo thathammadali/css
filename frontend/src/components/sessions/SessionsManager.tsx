@@ -179,7 +179,6 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
           organizer: eventData.organizer ?? null,
           capacity: eventData.capacity ?? null,
           registration_deadline: eventData.registrationDeadline || null,
-          fee_amount: eventData.isPaid ? Number(eventData.feeAmount ?? 0) : 0,
           location_type: eventData.locationType ?? 'on_campus',
         };
         const updated = await eventsApi.updateEvent(existingEventId, patch);
@@ -200,7 +199,6 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
         registrationDeadline: eventData.registrationDeadline
           ? eventData.registrationDeadline.replace(/Z$/, '+05:00')
           : undefined,
-        feeAmount: eventData.isPaid ? Number(eventData.feeAmount ?? 0) : 0,
         locationType: eventData.locationType ?? 'on_campus',
       });
       await eventService.refreshFromBackend();

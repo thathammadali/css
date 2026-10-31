@@ -465,7 +465,6 @@ function sessionPaymentDetails(raw: any): PaymentDetails | undefined {
 export function mapBackendEvent(raw: any, rawSessions: any[] = []): EventItem {
   const eventId = String(raw.id);
   const title: string = raw.title || 'Untitled Event';
-  const feeAmount = Number(raw.fee_amount ?? 0);
   const meta: EventMeta = {
     registrationDeadline: raw.registration_deadline ?? undefined,
     category: raw.category ?? undefined,
@@ -482,8 +481,6 @@ export function mapBackendEvent(raw: any, rawSessions: any[] = []): EventItem {
     status: (raw.status === 'DRAFT' ? 'PENDING_APPROVAL' : raw.status) as EventStatus,
     sessions: rawSessions.map((s) => mapBackendSession(s, eventId, title, meta)),
     registrationDeadline: raw.registration_deadline || '',
-    isPaid: feeAmount > 0,
-    feeAmount,
     createdBy: String(raw.created_by ?? 'System'),
     createdAt: raw.created_at || new Date().toISOString(),
   } as EventItem;
@@ -575,7 +572,6 @@ export const eventsApi = {
     organizer?: string;
     capacity?: number | null;
     registrationDeadline?: string; // ISO
-    feeAmount?: number;
     locationType?: 'on_campus' | 'virtual' | 'hybrid';
   }): Promise<EventItem> {
     const raw = await jsonRequest('POST', '/events', {
@@ -585,7 +581,6 @@ export const eventsApi = {
       organizer: input.organizer || null,
       capacity: input.capacity || null,
       registration_deadline: input.registrationDeadline || null,
-      fee_amount: input.feeAmount ?? 0,
       location_type: input.locationType || null,
     });
     return mapBackendEvent(raw, []);
@@ -593,7 +588,7 @@ export const eventsApi = {
 
   async updateEvent(eventId: string, patch: Record<string, unknown>): Promise<EventItem> {
     // patch uses backend field names: title, description, category, organizer, capacity,
-    // registration_deadline, fee_amount, location_type
+    // registration_deadline, location_type
     const raw = await jsonRequest('PATCH', `/events/${encodeURIComponent(eventId)}`, patch);
     return mapBackendEvent(raw, []);
   },

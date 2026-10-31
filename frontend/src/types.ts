@@ -237,8 +237,8 @@ export interface EventItem {
   paymentDeadline?: string;
   locationType?: 'on_campus' | 'virtual' | 'hybrid';
   capacity?: number | null;
-  isPaid: boolean;
-  feeAmount: number;
+  isPaid?: boolean;
+  feeAmount?: number;
   createdBy: string;
   createdAt: string;
   publishedAt?: string;

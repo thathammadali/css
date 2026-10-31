@@ -80,9 +80,9 @@ def list_events(
     if location_type:
         query = query.filter(Event.location_type == location_type)
     if is_free is True:
-        query = query.filter(Event.fee_amount == 0)
+        query = query.filter(~Event.sessions.any(EventSession.fee_amount > 0))
     elif is_free is False:
-        query = query.filter(Event.fee_amount > 0)
+        query = query.filter(Event.sessions.any(EventSession.fee_amount > 0))
     if date_from or date_to:
         conditions = []
         if date_from:

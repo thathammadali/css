@@ -52,6 +52,17 @@ interface PaymentReviewPageProps {
 import { EmptyState } from '../EmptyState';
 import { SkeletonState } from '../SkeletonState';
 
+function findSession(sessionId: string): SessionItem | undefined {
+  return eventService.getAllSessions().find((s) => s.id === sessionId);
+}
+
+/** Paid is decided by the session's own fee. If the session is not loaded, only a payment-stage status proves it is paid. */
+function isRegistrationOfPaidSession(reg: RegistrantItem): boolean {
+  const session = findSession(reg.sessionId);
+  if (session) return !!session.isPaid;
+  return reg.backendStatus === 'PAYMENT_PENDING' || reg.backendStatus === 'PAYMENT_REJECTED';
+}
+
 export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
   currentRole,
   registrants,
@@ -333,7 +344,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
   const filteredRegistrants: RegistrantItem[] = useMemo(() => {
     return accessibleRegistrants.filter((r: RegistrantItem) => {
       let matchesFilter = true;
-      const isPaidOrFree = r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0';
+      const isPaidOrFree = r.status === 'approved' || !isRegistrationOfPaidSession(r);
       switch (filterStatus) {
         case 'paid_approved':
           matchesFilter = isPaidOrFree;
@@ -410,7 +421,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                   : 'text-white/60 hover:text-white'
               }`}
             >
-              Paid / Approved Only ({accessibleRegistrants.filter((r) => r.status === 'approved' || r.amount?.includes('Free') || r.amount === '0').length})
+              Paid / Approved Only ({accessibleRegistrants.filter((r) => r.status === 'approved' || !isRegistrationOfPaidSession(r)).length})
             </button>
             <button
               type="button"
@@ -482,31 +493,51 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                 eligibility.checks.assignmentCompleted,
               ].filter(Boolean).length;
 
-              const allSessions = eventService.getAllSessions();
+              const realSession = findSession(reg.sessionId);
+
               const session =
-                allSessions.find((s) => s.id === reg.sessionId) ||
+
+
+                realSession ||
+
+
                 ({
+
+
                   id: reg.sessionId,
+
+
                   title: reg.sessionTitle,
-                  eventId: reg.eventId || 'evt-1',
-                  society: 'University Society',
-                  date: '2026-10-15',
-                  time: '14:00 – 17:30',
-                  location: 'Main Engineering Hall A-102',
+
+
+                  eventId: reg.eventId || '',
+
+
+                  society: '',
+
+
+                  date: '',
+
+
+                  time: '',
+
+
+                  location: '',
+
+
                   status: 'open',
-                  isPaid:
-                    reg.amount &&
-                    !reg.amount.includes('0') &&
-                    !reg.amount.toLowerCase().includes('free'),
-                  amount: reg.amount && !reg.amount.includes('0') ? 500 : 0,
+
+
+                  isPaid: false,
+
+
+                  amount: 0,
+
+
                 } as SessionItem);
 
               const isSessionClosed = session.status === 'closed';
-              const isPaidSession =
-                !!session.isPaid ||
-                (reg.amount &&
-                  !reg.amount.includes('0') &&
-                  !reg.amount.toLowerCase().includes('free'));
+              const isPaidSession = isRegistrationOfPaidSession(reg);
               const isRegistrationPending =
                 reg.lifecycleStatus === 'FORM_IN_PROGRESS' ||
                 reg.lifecycleStatus === 'SUBMITTED';
@@ -682,31 +713,51 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                     eligibility.checks.assignmentCompleted,
                   ].filter(Boolean).length;
 
-                  const allSessions = eventService.getAllSessions();
+                  const realSession = findSession(reg.sessionId);
+
                   const session =
-                    allSessions.find((s) => s.id === reg.sessionId) ||
+
+
+                    realSession ||
+
+
                     ({
+
+
                       id: reg.sessionId,
+
+
                       title: reg.sessionTitle,
-                      eventId: reg.eventId || 'evt-1',
-                      society: 'University Society',
-                      date: '2026-10-15',
-                      time: '14:00 – 17:30',
-                      location: 'Main Engineering Hall A-102',
+
+
+                      eventId: reg.eventId || '',
+
+
+                      society: '',
+
+
+                      date: '',
+
+
+                      time: '',
+
+
+                      location: '',
+
+
                       status: 'open',
-                      isPaid:
-                        reg.amount &&
-                        !reg.amount.includes('0') &&
-                        !reg.amount.toLowerCase().includes('free'),
-                      amount: reg.amount && !reg.amount.includes('0') ? 500 : 0,
+
+
+                      isPaid: false,
+
+
+                      amount: 0,
+
+
                     } as SessionItem);
 
                   const isSessionClosed = session.status === 'closed';
-                  const isPaidSession =
-                    !!session.isPaid ||
-                    (reg.amount &&
-                      !reg.amount.includes('0') &&
-                      !reg.amount.toLowerCase().includes('free'));
+                  const isPaidSession = isRegistrationOfPaidSession(reg);
                   const isPaymentPending = reg.backendStatus === 'PAYMENT_PENDING';
                   const isPaymentRejected = reg.backendStatus === 'PAYMENT_REJECTED';
                   const isRegistrationPending =
@@ -772,7 +823,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                           </button>
                         ) : (
                           <span className="text-white/40 text-[11px] italic">
-                            {reg.backendStatus === 'PAYMENT_PENDING' || reg.backendStatus === 'PAYMENT_REJECTED'
+                            {isPaidSession
                               ? 'No receipt uploaded'
                               : 'No slip required / free'}
                           </span>

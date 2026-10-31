@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   UploadCloud,
@@ -26,7 +26,7 @@ import {
 import { getSessionCapacity } from '../../utils/capacityHelper';
 import { storageService } from '../../services/storageService';
 import { registrationApi } from '../../services/registrationApi';
-import { authApi } from '../../services/apiClient';
+import { apiFetch, authApi } from '../../services/apiClient';
 import { PaymentDetailsCard } from './PaymentDetailsCard';
 import {
   INVALID_EMAIL_MESSAGE,
@@ -118,6 +118,39 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
     });
     return defaults;
   });
+
+  // Students: name, email and roll come from the account and are locked. Roll is required.
+  const isStudent = currentRole === 'student';
+  const [accountRoll, setAccountRoll] = useState<string | null>(() =>
+    isStudent && formValues['f-roll'] ? formValues['f-roll'] : null
+  );
+  useEffect(() => {
+    if (!isStudent) return;
+    let active = true;
+    apiFetch('/auth/me')
+      .then(async (res) => {
+        const me = res.ok ? await res.json().catch(() => null) : null;
+        if (!active) return;
+        if (!me) {
+          setAccountRoll((prev) => prev ?? '');
+          return;
+        }
+        setFormValues((prev) => ({
+          ...prev,
+          'f-name': me.full_name || prev['f-name'] || '',
+          'f-email': me.primary_email || prev['f-email'] || '',
+          'f-roll': me.roll_number || '',
+        }));
+        setAccountRoll(me.roll_number || '');
+      })
+      .catch(() => {
+        if (active) setAccountRoll((prev) => prev ?? '');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const rollMissing = isStudent && !accountRoll;
 
   // Receipt file upload state for paid sessions (max 5 MB)
   const [receiptFile, setReceiptFile] = useState<{
@@ -749,9 +782,23 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
                 Session Questionnaire
               </span>
 
+              {isStudent && accountRoll === '' && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200">
+                  Add your roll number in your{' '}
+                  <a href="#/profile" className="underline font-medium text-amber-100">
+                    profile
+                  </a>{' '}
+                  before registering.
+                </div>
+              )}
+
               {formConfig.fields.map((field) => {
                 // If guest already filled top fields, skip redundant duplicates
-                if (field.type === 'file' || (isGuest && (field.id === 'f-name' || field.id === 'f-email' || field.id === 'f-phone'))) {
+                if (
+                  field.type === 'file' ||
+                  (isGuest && (field.id === 'f-name' || field.id === 'f-email' || field.id === 'f-phone')) ||
+                  (field.id === 'f-roll' && rollMissing)
+                ) {
                   return null;
                 }
 
@@ -796,7 +843,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
                           }
                         }}
                         inputMode={field.id === 'f-phone' ? 'tel' : field.id === 'f-roll' ? 'numeric' : undefined}
-                        readOnly={!isGuest && (field.id === 'f-name' || field.id === 'f-email')}
+                        readOnly={(!isGuest && (field.id === 'f-name' || field.id === 'f-email')) || (isStudent && field.id === 'f-roll')}
                         placeholder={field.placeholder}
                         maxLength={field.validation?.maxLength}
                         className={`w-full p-3 rounded-xl bg-white/[0.06] border text-white focus:outline-none focus:border-[var(--primary-accent)] resize-none ${
@@ -831,7 +878,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
                           setFormValues({ ...formValues, [field.id]: value });
                         }}
                         inputMode={field.id === 'f-phone' ? 'tel' : field.id === 'f-roll' ? 'numeric' : undefined}
-                        readOnly={!isGuest && (field.id === 'f-name' || field.id === 'f-email')}
+                        readOnly={(!isGuest && (field.id === 'f-name' || field.id === 'f-email')) || (isStudent && field.id === 'f-roll')}
                         placeholder={field.placeholder}
                         maxLength={field.validation?.maxLength}
                         className={`w-full h-10 px-3 rounded-xl bg-white/[0.06] border text-white focus:outline-none ${
@@ -859,7 +906,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting || Object.values(errors).some(Boolean)}
+                disabled={isSubmitting || rollMissing || Object.values(errors).some(Boolean)}
                 className="px-6 py-2.5 rounded-xl bg-[var(--primary-accent)] hover:brightness-110 text-xs font-semibold text-white shadow-lg cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span>Continue to Review</span>

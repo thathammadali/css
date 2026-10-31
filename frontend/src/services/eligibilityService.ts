@@ -165,7 +165,6 @@ export const eligibilityService = {
     let paymentMessage = '';
 
     const isPaidEvent =
-      event?.isPaid === true ||
       session?.isPaid === true ||
       registrant.isPaid === true ||
       (typeof registrant.amount === 'string' &&
