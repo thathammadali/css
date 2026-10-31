@@ -271,7 +271,7 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
               className="px-3.5 py-1.5 rounded-xl bg-[var(--primary-accent)] hover:brightness-110 text-white text-xs font-medium cursor-pointer transition-all flex items-center gap-1.5 shadow"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>+ Add Session to this Event</span>
+              <span>Add Session to this Event</span>
             </button>
           )}
         </div>

@@ -126,7 +126,7 @@ export const SessionsListPage: React.FC<SessionsListPageProps> = ({
               className="hidden sm:inline-flex items-center gap-2 px-4 h-[42px] rounded-[16px] bg-[var(--primary-accent)] hover:brightness-110 active:scale-[0.99] text-white font-inter font-medium text-[13px] transition-all cursor-pointer shadow-lg select-none"
             >
               <Plus className="w-4 h-4" />
-              <span>+ New session</span>
+              <span>New session</span>
             </button>
           )}
         </div>
@@ -308,7 +308,7 @@ export const SessionsListPage: React.FC<SessionsListPageProps> = ({
           aria-label="Create new session"
         >
           <Plus className="w-5 h-5" />
-          <span>+ New session</span>
+          <span>New session</span>
         </button>
       )}
     </div>

@@ -99,7 +99,46 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
 
 
-class EventCreate(BaseModel):
+ACCOUNT_NUMBER_PATTERN = re.compile(r"^[A-Za-z0-9 -]+$")
+
+
+def _clean_payment_text(value: str | None) -> str | None:
+    return _clean_text(value, empty_to_none=True)
+
+
+def _clean_account_number(value: str | None) -> str | None:
+    cleaned = _clean_payment_text(value)
+    if cleaned is not None and not ACCOUNT_NUMBER_PATTERN.match(cleaned):
+        raise ValueError("Account number can only contain letters, digits, spaces and dashes.")
+    return cleaned
+
+
+def check_payment_details(fee_amount: Decimal | None, account_title: str | None, account_number: str | None) -> None:
+    if fee_amount is not None and fee_amount > 0:
+        if not account_title:
+            raise ValueError("Please enter the account title where students should send payment.")
+        if not account_number:
+            raise ValueError("Please enter the account number where students should send payment.")
+
+
+class PaymentDetailsMixin(BaseModel):
+    payment_method: str | None = Field(default=None, max_length=50)
+    account_title: str | None = Field(default=None, max_length=100)
+    account_number: str | None = Field(default=None, max_length=34)
+    payment_instructions: str | None = Field(default=None, max_length=500)
+
+    @field_validator("payment_method", "account_title", "payment_instructions")
+    @classmethod
+    def trim_payment_text(cls, v: str | None) -> str | None:
+        return _clean_payment_text(v)
+
+    @field_validator("account_number")
+    @classmethod
+    def validate_account_number(cls, v: str | None) -> str | None:
+        return _clean_account_number(v)
+
+
+class EventCreate(PaymentDetailsMixin):
     title: str = Field(min_length=3, max_length=200)
     description: str | None = Field(default=None, max_length=5000)
     category: str | None = Field(default=None, max_length=100)
@@ -108,6 +147,13 @@ class EventCreate(BaseModel):
     registration_deadline: datetime | None = None
     fee_amount: Decimal = Field(default=Decimal("0"), ge=0, le=1000000, decimal_places=2)
     location_type: LocationType | None = None
+
+    @model_validator(mode="after")
+    def payment_details_for_paid_events(self):
+        check_payment_details(self.fee_amount, self.account_title, self.account_number)
+        if self.fee_amount == 0:
+            self.payment_method = self.account_title = self.account_number = self.payment_instructions = None
+        return self
 
 
 class EventOut(BaseModel):
@@ -123,6 +169,10 @@ class EventOut(BaseModel):
     capacity: int | None
     registration_deadline: datetime | None
     fee_amount: Decimal
+    payment_method: str | None = None
+    account_title: str | None = None
+    account_number: str | None = None
+    payment_instructions: str | None = None
     created_by: int
     created_at: datetime
 
@@ -314,7 +364,7 @@ class AnswersUpdate(BaseModel):
     answers: dict[str, AnswerValue]
 
 
-class EventUpdate(BaseModel):
+class EventUpdate(PaymentDetailsMixin):
     title: str | None = Field(default=None, min_length=3, max_length=200)
     description: str | None = Field(default=None, max_length=5000)
     category: str | None = Field(default=None, max_length=100)

@@ -154,7 +154,7 @@ export const EventsListPage: React.FC<EventsListPageProps> = ({
               className="px-4 py-2 rounded-xl bg-[var(--primary-accent)] hover:brightness-110 text-white text-xs font-medium cursor-pointer transition-all flex items-center gap-1.5 shadow-lg shadow-[var(--primary-accent)]/20"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Propose Event</span>
+              <span>{isSuperAdmin ? 'Create Event' : 'Propose Event'}</span>
             </button>
           )}
         </div>

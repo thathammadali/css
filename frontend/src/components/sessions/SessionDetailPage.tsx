@@ -36,6 +36,7 @@ import { eventService } from '../../services/eventService';
 import { getSessionCapacity } from '../../utils/capacityHelper';
 import { registrationApi } from '../../services/registrationApi';
 import { validateReceiptFile } from '../../utils/validators';
+import { PaymentDetailsCard } from '../registration/PaymentDetailsCard';
 import MeetingLinks from '../MeetingLinks';
 
 interface SessionDetailPageProps {
@@ -540,6 +541,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                 <span className="text-[11px] font-mono text-amber-200/80">
                   Meeting access becomes available after payment approval
                 </span>
+                <PaymentDetailsCard details={session.paymentDetails} isPaid={session.isPaid} />
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
@@ -569,6 +571,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
                 <span className="text-[11px] text-rose-200/80">
                   {effectiveRegistrant?.receiptRejectedReason || 'Please upload a new receipt.'}
                 </span>
+                <PaymentDetailsCard details={session.paymentDetails} isPaid={session.isPaid} />
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"

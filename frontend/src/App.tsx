@@ -40,7 +40,7 @@ import { DEMO_MODE } from './config';
 import { userService } from './services/userService';
 import { eventService } from './services/eventService';
 import { formService } from './services/formService';
-import { apiFetch, eventsApi, getStoredAuthToken, setStoredAuthToken } from './services/apiClient';
+import { apiFetch, eventsApi, clearStoredSession, getStoredAuthToken } from './services/apiClient';
 import { registrationApi } from './services/registrationApi';
 
 const STORAGE_LOGIN_KEY = 'sems_is_logged_in';
@@ -49,11 +49,11 @@ const STORAGE_ACTIVE_TAB_KEY = 'sems_active_tab';
 const STORAGE_ACTIVE_SCREEN_KEY = 'sems_active_screen';
 
 export default function App() {
-  // User auth state with lazy initializers from localStorage (F5 survival)
+  // User auth state with lazy initializers from sessionStorage (survives F5, not a closed tab)
   const [user, setUser] = useState<AuthUser | null>(() => {
     try {
-      const savedSession = localStorage.getItem(STORAGE_ACTIVE_SESSION_KEY);
-      const isLoggedIn = localStorage.getItem(STORAGE_LOGIN_KEY) === 'true';
+      const savedSession = sessionStorage.getItem(STORAGE_ACTIVE_SESSION_KEY);
+      const isLoggedIn = sessionStorage.getItem(STORAGE_LOGIN_KEY) === 'true';
       if (isLoggedIn && savedSession) {
         const parsedUser: AuthUser = JSON.parse(savedSession);
         if (parsedUser && (parsedUser.email || parsedUser.primaryEmail)) {
@@ -70,8 +70,8 @@ export default function App() {
 
   const [currentRole, setCurrentRole] = useState<DashboardRole>(() => {
     try {
-      const savedSession = localStorage.getItem(STORAGE_ACTIVE_SESSION_KEY);
-      const isLoggedIn = localStorage.getItem(STORAGE_LOGIN_KEY) === 'true';
+      const savedSession = sessionStorage.getItem(STORAGE_ACTIVE_SESSION_KEY);
+      const isLoggedIn = sessionStorage.getItem(STORAGE_LOGIN_KEY) === 'true';
       if (isLoggedIn && savedSession) {
         const parsedUser: AuthUser = JSON.parse(savedSession);
         if (parsedUser && (parsedUser.email || parsedUser.primaryEmail)) {
@@ -460,18 +460,18 @@ export default function App() {
     setUser(sessionUser);
     setCurrentRole(identified.dashboardRole);
     try {
-      localStorage.setItem(STORAGE_LOGIN_KEY, 'true');
-      localStorage.setItem(STORAGE_ACTIVE_SESSION_KEY, JSON.stringify(sessionUser));
+      sessionStorage.setItem(STORAGE_LOGIN_KEY, 'true');
+      sessionStorage.setItem(STORAGE_ACTIVE_SESSION_KEY, JSON.stringify(sessionUser));
       localStorage.setItem(STORAGE_ACTIVE_SCREEN_KEY, 'dashboard');
       localStorage.setItem(STORAGE_ACTIVE_TAB_KEY, 'home');
-      localStorage.setItem('sems_user_email', effectiveEmail);
-      localStorage.setItem('sems_auth_backend_connected', String(Boolean(authUser.isBackendConnected)));
+      sessionStorage.setItem('sems_user_email', effectiveEmail);
+      sessionStorage.setItem('sems_auth_backend_connected', String(Boolean(authUser.isBackendConnected)));
       if (secondary) {
-        localStorage.setItem('sems_user_secondary_email', secondary);
+        sessionStorage.setItem('sems_user_secondary_email', secondary);
       } else {
-        localStorage.removeItem('sems_user_secondary_email');
+        sessionStorage.removeItem('sems_user_secondary_email');
       }
-      localStorage.setItem('sems_user_name', authUser.name);
+      sessionStorage.setItem('sems_user_name', authUser.name);
     } catch {
       // Safe fallback
     }
@@ -501,12 +501,12 @@ export default function App() {
   const handleUpdateUser = (updatedUser: AuthUser) => {
     setUser(updatedUser);
     try {
-      localStorage.setItem(STORAGE_ACTIVE_SESSION_KEY, JSON.stringify(updatedUser));
-      localStorage.setItem('sems_user_email', updatedUser.primaryEmail || updatedUser.email);
+      sessionStorage.setItem(STORAGE_ACTIVE_SESSION_KEY, JSON.stringify(updatedUser));
+      sessionStorage.setItem('sems_user_email', updatedUser.primaryEmail || updatedUser.email);
       if (updatedUser.secondaryEmail) {
-        localStorage.setItem('sems_user_secondary_email', updatedUser.secondaryEmail);
+        sessionStorage.setItem('sems_user_secondary_email', updatedUser.secondaryEmail);
       }
-      localStorage.setItem('sems_user_name', updatedUser.name);
+      sessionStorage.setItem('sems_user_name', updatedUser.name);
     } catch {
       // Safe fallback
     }
@@ -514,21 +514,16 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setStoredAuthToken(null);
+    clearStoredSession();
     eventService.saveEvents([]);
     setEvents([]);
+    setRegistrants([]);
+    setCertificates([]);
     setUser(null);
     setCurrentRole('guest');
     try {
-      localStorage.removeItem(STORAGE_LOGIN_KEY);
-      localStorage.removeItem(STORAGE_ACTIVE_SESSION_KEY);
       localStorage.removeItem(STORAGE_ACTIVE_TAB_KEY);
       localStorage.removeItem(STORAGE_ACTIVE_SCREEN_KEY);
-      localStorage.removeItem('sems_user_email');
-      localStorage.removeItem('sems_user_name');
-      localStorage.removeItem('sems_user_secondary_email');
-      localStorage.removeItem('sems_user_role');
-      localStorage.removeItem('sems_auth_backend_connected');
       sessionStorage.removeItem('sems_return_url');
     } catch {
       // Safe fallback

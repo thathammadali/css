@@ -52,6 +52,10 @@ class Event(Base):
     capacity = Column(Integer, nullable=True)
     registration_deadline = Column(DateTime(timezone=True), nullable=True)
     fee_amount = Column(Numeric(10, 2), nullable=False, default=0)  # 0 = free event
+    payment_method = Column(String, nullable=True)
+    account_title = Column(String, nullable=True)
+    account_number = Column(String(34), nullable=True)
+    payment_instructions = Column(Text, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

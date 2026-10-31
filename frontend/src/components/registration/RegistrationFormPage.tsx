@@ -27,6 +27,7 @@ import { getSessionCapacity } from '../../utils/capacityHelper';
 import { storageService } from '../../services/storageService';
 import { registrationApi } from '../../services/registrationApi';
 import { authApi } from '../../services/apiClient';
+import { PaymentDetailsCard } from './PaymentDetailsCard';
 import {
   INVALID_EMAIL_MESSAGE,
   INVALID_NAME_MESSAGE,
@@ -74,7 +75,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
   const [guestInstitution, setGuestInstitution] = useState('');
   const [institution, setInstitution] = useState(() => {
     try {
-      const raw = localStorage.getItem('sems_active_session');
+      const raw = sessionStorage.getItem('sems_active_session');
       return raw ? String(JSON.parse(raw)?.institution ?? '') : '';
     } catch {
       return '';
@@ -89,7 +90,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
   const [formValues, setFormValues] = useState<Record<string, string>>(() => {
     let activeUser: any = null;
     try {
-      const raw = localStorage.getItem('sems_active_session');
+      const raw = sessionStorage.getItem('sems_active_session');
       if (raw) activeUser = JSON.parse(raw);
     } catch {
       // safe fallback
@@ -433,6 +434,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
           </div>
           {session?.isPaid && registeredItem?.backendStatus === 'PAYMENT_PENDING' && (
             <div className="space-y-2 text-left border-t border-white/[0.1] pt-4">
+              <PaymentDetailsCard details={session?.paymentDetails} isPaid={session?.isPaid} />
               <label className="block text-xs font-medium text-white">Upload payment receipt</label>
               <input
                 type="file"

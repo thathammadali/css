@@ -201,6 +201,7 @@ export interface SessionItem {
   paymentDeadline?: string;
   isPaid?: boolean;
   amount?: number;
+  paymentDetails?: PaymentDetails;
   resources?: SessionResource[];
   comments?: SessionComment[];
   tasks?: SessionTask[];
@@ -214,6 +215,13 @@ export interface SessionItem {
   recordingDuration?: string;
   meetingSummary?: string;
   attendanceCount?: number;
+}
+
+export interface PaymentDetails {
+  method?: string;
+  accountTitle?: string;
+  accountNumber?: string;
+  instructions?: string;
 }
 
 export interface EventItem {
@@ -231,6 +239,7 @@ export interface EventItem {
   capacity?: number | null;
   isPaid: boolean;
   feeAmount: number;
+  paymentDetails?: PaymentDetails;
   createdBy: string;
   createdAt: string;
   publishedAt?: string;

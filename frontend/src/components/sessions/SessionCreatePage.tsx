@@ -547,7 +547,7 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
                 className="text-xs text-[var(--primary-accent)] hover:underline flex items-center gap-1 cursor-pointer font-medium"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>{isCustomCategory ? 'Use Pre-defined List' : '+ Add Custom Category'}</span>
+                <span>{isCustomCategory ? 'Use Pre-defined List' : 'Add Custom Category'}</span>
               </button>
             </div>
 

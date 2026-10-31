@@ -7,7 +7,15 @@ from sqlalchemy.orm import Session
 from auth import get_current_user_optional, require_roles
 from database import get_db
 from models import Event, EventSession, Registration, User
-from schemas import EventCreate, EventOut, EventUpdate, SessionCreate, SessionOut, SessionUpdate
+from schemas import (
+    EventCreate,
+    EventOut,
+    EventUpdate,
+    SessionCreate,
+    SessionOut,
+    SessionUpdate,
+    check_payment_details,
+)
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -40,6 +48,10 @@ def create_event(
         capacity=data.capacity,
         registration_deadline=data.registration_deadline,
         fee_amount=data.fee_amount,
+        payment_method=data.payment_method,
+        account_title=data.account_title,
+        account_number=data.account_number,
+        payment_instructions=data.payment_instructions,
         location_type=data.location_type,
         created_by=user.id,
         status="DRAFT",
@@ -191,10 +203,18 @@ def update_event(
     event = db.get(Event, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found.")
-    for field, value in data.model_dump(exclude_unset=True).items():
+    changes = data.model_dump(exclude_unset=True)
+    for field, value in changes.items():
         if field in ("title", "fee_amount") and value is None:
             raise HTTPException(status_code=400, detail=f"{field} cannot be empty.")
         setattr(event, field, value)
+    if changes.keys() & {"fee_amount", "payment_method", "account_title", "account_number", "payment_instructions"}:
+        try:
+            check_payment_details(event.fee_amount, event.account_title, event.account_number)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+    if event.fee_amount == 0:
+        event.payment_method = event.account_title = event.account_number = event.payment_instructions = None
     db.commit()
     db.refresh(event)
     return event

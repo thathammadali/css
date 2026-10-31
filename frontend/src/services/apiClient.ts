@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { UserAccount, DashboardRole, EventItem, SessionItem, EventStatus, SessionStatus } from '../types';
+import { UserAccount, DashboardRole, EventItem, PaymentDetails, SessionItem, EventStatus, SessionStatus } from '../types';
 import { DEMO_MODE } from '../config';
 import { userService } from './userService';
 import { INITIAL_EVENTS } from '../data/mockEvents';
@@ -37,14 +37,55 @@ export function setApiBaseUrl(url: string): void {
   else localStorage.removeItem(TUNNEL_STORAGE_KEY);
 }
 
+/** Cached signed-in user keys. They live in sessionStorage, so closing the tab signs the user out. */
+export const SESSION_USER_KEYS = [
+  'sems_is_logged_in',
+  'sems_active_session',
+  'sems_user_email',
+  'sems_user_name',
+  'sems_user_secondary_email',
+  'sems_user_role',
+  'sems_auth_backend_connected',
+];
+
+const LEGACY_AUTH_KEYS = [AUTH_TOKEN_KEY, ...SESSION_USER_KEYS];
+
+function removeKeys(storage: () => Storage, keys: string[]): void {
+  try {
+    const target = storage();
+    keys.forEach((key) => target.removeItem(key));
+  } catch {
+    // storage unavailable
+  }
+}
+
+/** Removes the token and cached user from sessionStorage and from the old localStorage location. */
+export function clearStoredSession(): void {
+  if (typeof window === 'undefined') return;
+  removeKeys(() => sessionStorage, LEGACY_AUTH_KEYS);
+  removeKeys(() => localStorage, LEGACY_AUTH_KEYS);
+}
+
+// One-time cleanup: anyone signed in through the old localStorage storage is signed out.
+if (typeof window !== 'undefined') removeKeys(() => localStorage, LEGACY_AUTH_KEYS);
+
 export function getStoredAuthToken(): string | null {
-  return typeof window !== 'undefined' ? localStorage.getItem(AUTH_TOKEN_KEY) : null;
+  if (typeof window === 'undefined') return null;
+  try {
+    return sessionStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function setStoredAuthToken(token: string | null): void {
   if (typeof window === 'undefined') return;
-  if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
-  else localStorage.removeItem(AUTH_TOKEN_KEY);
+  try {
+    if (token) sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    else sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    // storage unavailable
+  }
 }
 
 export function getPreviewOrigin(): string {
@@ -68,6 +109,10 @@ export async function readError(res: Response): Promise<string> {
       title: 'Title',
       capacity: 'Capacity',
       fee_amount: 'Fee',
+      payment_method: 'Payment method',
+      account_title: 'Account title',
+      account_number: 'Account number',
+      payment_instructions: 'Payment instructions',
       registration_deadline: 'Registration deadline',
       reason: 'Reason',
       meeting_links: 'Meeting link',
@@ -99,7 +144,7 @@ export async function readError(res: Response): Promise<string> {
 
 /**
  * Central fetch. Throws if no backend URL is configured (callers treat that as "offline").
- * On a 401 for a request that carried a token, clears the token and fires 'sems:unauthorized'.
+ * On a 401 for a request that carried a token, clears the session and fires 'sems:unauthorized' once.
  */
 export async function apiFetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
   const baseUrl = getApiBaseUrl();
@@ -112,8 +157,8 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}): Pro
   if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
 
   const res = await fetch(`${baseUrl}${cleanEndpoint}`, { ...options, headers });
-  if (res.status === 401 && token && cleanEndpoint !== '/auth/login') {
-    setStoredAuthToken(null);
+  if (res.status === 401 && token && cleanEndpoint !== '/auth/login' && getStoredAuthToken() === token) {
+    clearStoredSession();
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('sems:unauthorized'));
   }
   return res;
@@ -311,6 +356,7 @@ interface EventMeta {
   organizer?: string;
   description?: string;
   eventCapacity?: number | null;
+  paymentDetails?: PaymentDetails;
 }
 
 function fmtDate(iso: string, tz: string): string {
@@ -399,6 +445,7 @@ export function mapBackendSession(
     registrationDeadline: meta?.registrationDeadline,
     isPaid: meta?.isPaid ?? false,
     amount: meta?.amount ?? 0,
+    paymentDetails: meta?.paymentDetails,
     deliveryStatus,
     resources: [],
     tasks: [],
@@ -411,6 +458,15 @@ export function mapBackendEvent(raw: any, rawSessions: any[] = []): EventItem {
   const eventId = String(raw.id);
   const title: string = raw.title || 'Untitled Event';
   const feeAmount = Number(raw.fee_amount ?? 0);
+  const paymentDetails: PaymentDetails | undefined =
+    feeAmount > 0 && (raw.account_title || raw.account_number)
+      ? {
+          method: raw.payment_method ?? undefined,
+          accountTitle: raw.account_title ?? undefined,
+          accountNumber: raw.account_number ?? undefined,
+          instructions: raw.payment_instructions ?? undefined,
+        }
+      : undefined;
   const meta: EventMeta = {
     isPaid: feeAmount > 0,
     amount: feeAmount,
@@ -419,6 +475,7 @@ export function mapBackendEvent(raw: any, rawSessions: any[] = []): EventItem {
     organizer: raw.organizer ?? undefined,
     description: raw.description ?? undefined,
     eventCapacity: raw.capacity ?? null,
+    paymentDetails,
   };
   return {
     id: eventId,
@@ -431,6 +488,7 @@ export function mapBackendEvent(raw: any, rawSessions: any[] = []): EventItem {
     registrationDeadline: raw.registration_deadline || '',
     isPaid: feeAmount > 0,
     feeAmount,
+    paymentDetails,
     createdBy: String(raw.created_by ?? 'System'),
     createdAt: raw.created_at || new Date().toISOString(),
   } as EventItem;
@@ -523,6 +581,7 @@ export const eventsApi = {
     capacity?: number | null;
     registrationDeadline?: string; // ISO
     feeAmount?: number;
+    paymentDetails?: PaymentDetails;
     locationType?: 'on_campus' | 'virtual' | 'hybrid';
   }): Promise<EventItem> {
     const raw = await jsonRequest('POST', '/events', {
@@ -533,6 +592,10 @@ export const eventsApi = {
       capacity: input.capacity || null,
       registration_deadline: input.registrationDeadline || null,
       fee_amount: input.feeAmount ?? 0,
+      payment_method: input.paymentDetails?.method || null,
+      account_title: input.paymentDetails?.accountTitle || null,
+      account_number: input.paymentDetails?.accountNumber || null,
+      payment_instructions: input.paymentDetails?.instructions || null,
       location_type: input.locationType || null,
     });
     return mapBackendEvent(raw, []);
@@ -540,7 +603,8 @@ export const eventsApi = {
 
   async updateEvent(eventId: string, patch: Record<string, unknown>): Promise<EventItem> {
     // patch uses backend field names: title, description, category, organizer, capacity,
-    // registration_deadline, fee_amount, location_type
+    // registration_deadline, fee_amount, payment_method, account_title, account_number,
+    // payment_instructions, location_type
     const raw = await jsonRequest('PATCH', `/events/${encodeURIComponent(eventId)}`, patch);
     return mapBackendEvent(raw, []);
   },
