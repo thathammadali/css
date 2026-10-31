@@ -180,10 +180,6 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
           capacity: eventData.capacity ?? null,
           registration_deadline: eventData.registrationDeadline || null,
           fee_amount: eventData.isPaid ? Number(eventData.feeAmount ?? 0) : 0,
-          payment_method: eventData.isPaid ? eventData.paymentDetails?.method ?? null : null,
-          account_title: eventData.isPaid ? eventData.paymentDetails?.accountTitle ?? null : null,
-          account_number: eventData.isPaid ? eventData.paymentDetails?.accountNumber ?? null : null,
-          payment_instructions: eventData.isPaid ? eventData.paymentDetails?.instructions ?? null : null,
           location_type: eventData.locationType ?? 'on_campus',
         };
         const updated = await eventsApi.updateEvent(existingEventId, patch);
@@ -205,7 +201,6 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
           ? eventData.registrationDeadline.replace(/Z$/, '+05:00')
           : undefined,
         feeAmount: eventData.isPaid ? Number(eventData.feeAmount ?? 0) : 0,
-        paymentDetails: eventData.isPaid ? eventData.paymentDetails : undefined,
         locationType: eventData.locationType ?? 'on_campus',
       });
       await eventService.refreshFromBackend();
@@ -271,6 +266,15 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
           capacity: newOrUpdatedSession.totalSeats ?? null,
           ...(meetingLinks !== undefined ? { meeting_links: meetingLinks } : {}),
           speaker: newOrUpdatedSession.speaker || null,
+          fee_amount: newOrUpdatedSession.isPaid ? Number(newOrUpdatedSession.amount ?? 0) : 0,
+          ...(newOrUpdatedSession.isPaid
+            ? {
+                payment_method: newOrUpdatedSession.paymentDetails?.method ?? null,
+                account_title: newOrUpdatedSession.paymentDetails?.accountTitle ?? null,
+                account_number: newOrUpdatedSession.paymentDetails?.accountNumber ?? null,
+                payment_instructions: newOrUpdatedSession.paymentDetails?.instructions ?? null,
+              }
+            : {}),
         });
         await eventService.refreshFromBackend();
         onUpdateEvents(eventService.getEvents());
@@ -285,6 +289,8 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
           capacity: newOrUpdatedSession.totalSeats ?? null,
           meetingLinks,
           speaker: newOrUpdatedSession.speaker || undefined,
+          feeAmount: newOrUpdatedSession.isPaid ? Number(newOrUpdatedSession.amount ?? 0) : 0,
+          paymentDetails: newOrUpdatedSession.isPaid ? newOrUpdatedSession.paymentDetails : undefined,
         });
         await eventService.refreshFromBackend();
         onUpdateEvents(eventService.getEvents());

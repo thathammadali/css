@@ -10,7 +10,17 @@ interface PaymentDetailsCardProps {
 export const PaymentDetailsCard: React.FC<PaymentDetailsCardProps> = ({ details, isPaid = true }) => {
   const [copied, setCopied] = useState(false);
 
-  if (!isPaid || !details || (!details.accountTitle && !details.accountNumber)) return null;
+  if (!isPaid) return null;
+
+  if (!details || (!details.accountTitle && !details.accountNumber)) {
+    return (
+      <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-left">
+        <p className="text-xs text-amber-200">
+          The organizer has not added payment details yet. Please check back or contact the organizer.
+        </p>
+      </div>
+    );
+  }
 
   const handleCopy = async () => {
     if (!details.accountNumber) return;

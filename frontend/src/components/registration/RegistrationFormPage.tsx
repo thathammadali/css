@@ -393,7 +393,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
           ) : null}
           {session?.isPaid ? (
             <span className="text-xs font-medium text-amber-300 bg-amber-500/20 border border-amber-500/30 px-3 py-1 rounded-full">
-              Fee: PKR {session.amount} {isWaitlistMode ? '(Pay on confirmation)' : ''}
+              Fee: Rs. {session.amount} {isWaitlistMode ? '(Pay on confirmation)' : ''}
             </span>
           ) : (
             <span className="text-xs font-medium text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-3 py-1 rounded-full">
@@ -521,7 +521,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
                   <span className="text-white/50 block">Payment Receipt Uploaded:</span>
                   <span className="text-white font-mono">{receiptFile.name} ({receiptFile.size})</span>
                 </div>
-                <span className="text-[11px] text-amber-300 font-medium">PKR {session.amount} Pending Review</span>
+                <span className="text-[11px] text-amber-300 font-medium">Rs. {session.amount} Pending Review</span>
               </div>
             )}
           </div>
@@ -577,7 +577,7 @@ export const RegistrationFormPage: React.FC<RegistrationFormPageProps> = ({
               <div className="text-left sm:text-right">
                 <span className="text-xs text-[var(--text-sec-70)] block">Required Fee</span>
                 <span className="text-sm font-bold text-white">
-                  {session?.isPaid ? `PKR ${session.amount}` : 'Free'}
+                  {session?.isPaid ? `Rs. ${session.amount}` : 'Free'}
                 </span>
               </div>
             </div>

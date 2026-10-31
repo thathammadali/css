@@ -97,7 +97,7 @@ export const INITIAL_AUDIT_LOGS: AuditLogEntry[] = [
     actorRole: 'ADMIN',
     target: 'Jordan Lee (FA23-BCS-042)',
     timestamp: '2026-09-28T16:10:00Z',
-    details: 'Bank transfer slip verified for amount PKR 500.',
+    details: 'Bank transfer slip verified for amount Rs. 500.',
     result: 'SUCCESS',
   },
   {

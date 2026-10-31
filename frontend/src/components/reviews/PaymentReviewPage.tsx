@@ -1035,7 +1035,7 @@ export const PaymentReviewPage: React.FC<PaymentReviewPageProps> = ({
                 rows={3}
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value.slice(0, 300))}
-                placeholder="e.g. Transaction ID was truncated; deposited amount does not match session fee (PKR 500)."
+                placeholder="e.g. Transaction ID was truncated; deposited amount does not match session fee (Rs. 500)."
                 className="w-full p-3 rounded-xl bg-white/[0.06] border border-white/[0.15] text-white focus:outline-none focus:border-rose-400 resize-none"
               />
             </div>

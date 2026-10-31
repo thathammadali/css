@@ -349,14 +349,11 @@ export const authApi = {
 /* ---------------------------- Mappers ---------------------------- */
 
 interface EventMeta {
-  isPaid: boolean;
-  amount: number;
   registrationDeadline?: string;
   category?: string;
   organizer?: string;
   description?: string;
   eventCapacity?: number | null;
-  paymentDetails?: PaymentDetails;
 }
 
 function fmtDate(iso: string, tz: string): string {
@@ -386,6 +383,7 @@ export function mapBackendSession(
   const endsAt: string | undefined = raw.ends_at ?? raw.end_time ?? raw.endTime;
   const tz: string = raw.timezone || 'Asia/Karachi';
   const registered = Number(raw.registered_count ?? 0);
+  const sessionFee = Number(raw.fee_amount ?? 0);
   const cap = raw.capacity ?? meta?.eventCapacity ?? null;
   const numericCapacity = Number(cap);
   const totalSeats = Number.isFinite(numericCapacity) && numericCapacity > 0 ? numericCapacity : undefined;
@@ -443,9 +441,9 @@ export function mapBackendSession(
     description: raw.description || meta?.description || '',
     registrationRequired: true,
     registrationDeadline: meta?.registrationDeadline,
-    isPaid: meta?.isPaid ?? false,
-    amount: meta?.amount ?? 0,
-    paymentDetails: meta?.paymentDetails,
+    isPaid: sessionFee > 0,
+    amount: sessionFee,
+    paymentDetails: sessionPaymentDetails(raw),
     deliveryStatus,
     resources: [],
     tasks: [],
@@ -453,29 +451,27 @@ export function mapBackendSession(
   } as SessionItem;
 }
 
+function sessionPaymentDetails(raw: any): PaymentDetails | undefined {
+  if (!raw.account_title && !raw.account_number) return undefined;
+  return {
+    method: raw.payment_method ?? undefined,
+    accountTitle: raw.account_title ?? undefined,
+    accountNumber: raw.account_number ?? undefined,
+    instructions: raw.payment_instructions ?? undefined,
+  };
+}
+
 /** Backend event (+ its sessions) -> EventItem. DRAFT is shown as PENDING_APPROVAL (super admin publishes). */
 export function mapBackendEvent(raw: any, rawSessions: any[] = []): EventItem {
   const eventId = String(raw.id);
   const title: string = raw.title || 'Untitled Event';
   const feeAmount = Number(raw.fee_amount ?? 0);
-  const paymentDetails: PaymentDetails | undefined =
-    feeAmount > 0 && (raw.account_title || raw.account_number)
-      ? {
-          method: raw.payment_method ?? undefined,
-          accountTitle: raw.account_title ?? undefined,
-          accountNumber: raw.account_number ?? undefined,
-          instructions: raw.payment_instructions ?? undefined,
-        }
-      : undefined;
   const meta: EventMeta = {
-    isPaid: feeAmount > 0,
-    amount: feeAmount,
     registrationDeadline: raw.registration_deadline ?? undefined,
     category: raw.category ?? undefined,
     organizer: raw.organizer ?? undefined,
     description: raw.description ?? undefined,
     eventCapacity: raw.capacity ?? null,
-    paymentDetails,
   };
   return {
     id: eventId,
@@ -488,7 +484,6 @@ export function mapBackendEvent(raw: any, rawSessions: any[] = []): EventItem {
     registrationDeadline: raw.registration_deadline || '',
     isPaid: feeAmount > 0,
     feeAmount,
-    paymentDetails,
     createdBy: String(raw.created_by ?? 'System'),
     createdAt: raw.created_at || new Date().toISOString(),
   } as EventItem;
@@ -581,7 +576,6 @@ export const eventsApi = {
     capacity?: number | null;
     registrationDeadline?: string; // ISO
     feeAmount?: number;
-    paymentDetails?: PaymentDetails;
     locationType?: 'on_campus' | 'virtual' | 'hybrid';
   }): Promise<EventItem> {
     const raw = await jsonRequest('POST', '/events', {
@@ -592,10 +586,6 @@ export const eventsApi = {
       capacity: input.capacity || null,
       registration_deadline: input.registrationDeadline || null,
       fee_amount: input.feeAmount ?? 0,
-      payment_method: input.paymentDetails?.method || null,
-      account_title: input.paymentDetails?.accountTitle || null,
-      account_number: input.paymentDetails?.accountNumber || null,
-      payment_instructions: input.paymentDetails?.instructions || null,
       location_type: input.locationType || null,
     });
     return mapBackendEvent(raw, []);
@@ -603,8 +593,7 @@ export const eventsApi = {
 
   async updateEvent(eventId: string, patch: Record<string, unknown>): Promise<EventItem> {
     // patch uses backend field names: title, description, category, organizer, capacity,
-    // registration_deadline, fee_amount, payment_method, account_title, account_number,
-    // payment_instructions, location_type
+    // registration_deadline, fee_amount, location_type
     const raw = await jsonRequest('PATCH', `/events/${encodeURIComponent(eventId)}`, patch);
     return mapBackendEvent(raw, []);
   },
@@ -627,6 +616,8 @@ export const eventsApi = {
       meetingLink?: string;
       meetingLinks?: { url: string; platform?: string; label?: string; public?: boolean }[];
       speaker?: string;
+      feeAmount?: number;
+      paymentDetails?: PaymentDetails;
     }
   ): Promise<SessionItem> {
     const raw = await jsonRequest('POST', `/events/${encodeURIComponent(eventId)}/sessions`, {
@@ -639,12 +630,18 @@ export const eventsApi = {
       meeting_link: input.meetingLink || null,
       meeting_links: input.meetingLinks && input.meetingLinks.length ? input.meetingLinks : undefined,
       speaker: input.speaker || null,
+      fee_amount: input.feeAmount ?? 0,
+      payment_method: input.paymentDetails?.method || null,
+      account_title: input.paymentDetails?.accountTitle || null,
+      account_number: input.paymentDetails?.accountNumber || null,
+      payment_instructions: input.paymentDetails?.instructions || null,
     });
     return mapBackendSession(raw, eventId);
   },
 
   async updateSession(eventId: string, sessionId: string, patch: Record<string, unknown>): Promise<SessionItem> {
-    // patch uses backend names: title, starts_at, ends_at, timezone, location, capacity, meeting_link, speaker
+    // patch uses backend names: title, starts_at, ends_at, timezone, location, capacity, meeting_link, speaker,
+    // fee_amount, payment_method, account_title, account_number, payment_instructions
     const requestPatch = { ...patch };
     if (requestPatch.meeting_links === undefined) delete requestPatch.meeting_links;
     const raw = await jsonRequest(

@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_
@@ -16,6 +17,8 @@ from schemas import (
     SessionUpdate,
     check_payment_details,
 )
+
+PAYMENT_FIELDS = {"payment_method", "account_title", "account_number", "payment_instructions"}
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -48,10 +51,6 @@ def create_event(
         capacity=data.capacity,
         registration_deadline=data.registration_deadline,
         fee_amount=data.fee_amount,
-        payment_method=data.payment_method,
-        account_title=data.account_title,
-        account_number=data.account_number,
-        payment_instructions=data.payment_instructions,
         location_type=data.location_type,
         created_by=user.id,
         status="DRAFT",
@@ -126,6 +125,28 @@ def publish_event(
     return event
 
 
+def _payment_fields(
+    fee_amount: Decimal,
+    method: str | None,
+    title: str | None,
+    number: str | None,
+    instructions: str | None,
+) -> dict:
+    """Payment account fields for a session. Free sessions (session fee 0) store none."""
+    try:
+        check_payment_details(fee_amount, title, number)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not fee_amount:
+        return {"payment_method": None, "account_title": None, "account_number": None, "payment_instructions": None}
+    return {
+        "payment_method": method,
+        "account_title": title,
+        "account_number": number,
+        "payment_instructions": instructions,
+    }
+
+
 @router.post("/{event_id}/sessions", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 def create_session(
     event_id: int,
@@ -139,6 +160,7 @@ def create_session(
     if data.ends_at <= data.starts_at:
         raise HTTPException(status_code=400, detail="Session end time must be after the start time.")
     links, primary = _links_payload(data.meeting_links, data.meeting_link)
+    payment = _payment_fields(data.fee_amount, data.payment_method, data.account_title, data.account_number, data.payment_instructions)
     new_session = EventSession(
         event_id=event_id,
         title=data.title,
@@ -150,6 +172,8 @@ def create_session(
         meeting_link=primary,
         meeting_links=links,
         speaker=data.speaker,
+        fee_amount=data.fee_amount,
+        **payment,
     )
     db.add(new_session)
     db.commit()
@@ -203,18 +227,10 @@ def update_event(
     event = db.get(Event, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found.")
-    changes = data.model_dump(exclude_unset=True)
-    for field, value in changes.items():
+    for field, value in data.model_dump(exclude_unset=True).items():
         if field in ("title", "fee_amount") and value is None:
             raise HTTPException(status_code=400, detail=f"{field} cannot be empty.")
         setattr(event, field, value)
-    if changes.keys() & {"fee_amount", "payment_method", "account_title", "account_number", "payment_instructions"}:
-        try:
-            check_payment_details(event.fee_amount, event.account_title, event.account_number)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-    if event.fee_amount == 0:
-        event.payment_method = event.account_title = event.account_number = event.payment_instructions = None
     db.commit()
     db.refresh(event)
     return event
@@ -232,7 +248,7 @@ def update_session(
     if event_session is None or event_session.event_id != event_id:
         raise HTTPException(status_code=404, detail="Session not found.")
     changes = data.model_dump(exclude_unset=True)
-    for field in ("title", "starts_at", "ends_at", "timezone"):
+    for field in ("title", "starts_at", "ends_at", "timezone", "fee_amount"):
         if field in changes and changes[field] is None:
             raise HTTPException(status_code=400, detail=f"{field} cannot be empty.")
     for field, value in changes.items():
@@ -246,6 +262,20 @@ def update_session(
         event_session.meeting_links = (
             [{"platform": "other", "label": None, "url": legacy, "public": False}] if legacy else None
         )
+    if changes.keys() & (PAYMENT_FIELDS | {"fee_amount"}):
+        try:
+            payment = _payment_fields(
+                event_session.fee_amount,
+                event_session.payment_method,
+                event_session.account_title,
+                event_session.account_number,
+                event_session.payment_instructions,
+            )
+        except HTTPException:
+            db.rollback()
+            raise
+        for field, value in payment.items():
+            setattr(event_session, field, value)
     if event_session.ends_at <= event_session.starts_at:
         db.rollback()
         raise HTTPException(status_code=400, detail="Session end time must be after the start time.")

@@ -22,7 +22,7 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
     id: 'notif-2',
     type: 'payment_approved',
     title: 'Payment Receipt Approved',
-    message: 'Your registration fee payment of PKR 500 for "Annual Robotics & AI Symposium 2026" has been verified. Seat confirmed!',
+    message: 'Your registration fee payment of Rs. 500 for "Annual Robotics & AI Symposium 2026" has been verified. Seat confirmed!',
     timestamp: 'Yesterday',
     read: false,
     linkTab: 'registrants',

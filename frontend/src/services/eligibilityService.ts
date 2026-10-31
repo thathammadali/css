@@ -17,6 +17,7 @@ import { INITIAL_ATTENDANCE_RECORDS } from '../data/mockAttendance';
 import { INITIAL_TASK_SUBMISSIONS } from '../data/mockSubmissions';
 import { INITIAL_SESSIONS } from '../data/mockSessions';
 import { eventService } from './eventService';
+import { formatDeadline } from '../utils/formatDeadline';
 
 const ATTENDANCE_STORAGE_KEY = 'sems_attendance_records';
 const SUBMISSIONS_STORAGE_KEY = 'sems_task_submissions';
@@ -261,7 +262,7 @@ export const eligibilityService = {
           if (!isNaN(submissionTime) && !isNaN(deadlineTime) && submissionTime > deadlineTime) {
             allOnTime = false;
             lateTaskName = t.title;
-            lateDetails = `submitted on ${new Date(submission.submittedAt).toLocaleDateString()}, deadline was ${t.dueDate}`;
+            lateDetails = `submitted on ${new Date(submission.submittedAt).toLocaleDateString()}, deadline was ${formatDeadline(t.dueDate)}`;
             break;
           }
         }

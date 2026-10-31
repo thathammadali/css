@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { EventItem, SessionItem, DashboardRole, EventStatus } from '../../types';
 import MeetingLinks from '../MeetingLinks';
+import { getEventFeeLabel } from '../../utils/feeLabel';
+import { formatDeadline } from '../../utils/formatDeadline';
 
 interface EventDetailPageProps {
   event: EventItem;
@@ -214,18 +216,14 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
             <div>
               <span className="text-[var(--text-sec-70)] block mb-1">Registration Fee</span>
               <span className="font-medium text-white">
-                {event.isPaid ? `Rs. ${event.feeAmount}` : 'Free of Charge'}
+                {getEventFeeLabel(event, 'Free of Charge')}
               </span>
             </div>
 
             <div>
               <span className="text-[var(--text-sec-70)] block mb-1">Registration Deadline</span>
               <span className="font-medium text-white">
-                {new Date(event.registrationDeadline).toLocaleDateString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
+                {formatDeadline(event.registrationDeadline)}
               </span>
             </div>
 
@@ -233,11 +231,7 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
               <div>
                 <span className="text-[var(--text-sec-70)] block mb-1">Payment Slip Deadline</span>
                 <span className="font-medium text-amber-300">
-                  {new Date(event.paymentDeadline).toLocaleDateString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
+                  {formatDeadline(event.paymentDeadline)}
                 </span>
               </div>
             )}

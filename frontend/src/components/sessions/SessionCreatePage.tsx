@@ -29,6 +29,8 @@ interface SessionCreatePageProps {
   onNotify: (msg: string) => void;
 }
 
+const PAYMENT_METHODS = ['Bank transfer', 'JazzCash', 'Easypaisa', 'Other'];
+
 const PREDEFINED_SESSION_CATEGORIES = [
   'Technical Workshop',
   'Hands-on Lab',
@@ -195,6 +197,25 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
   );
   const [amount, setAmount] = useState<number>(initialSession?.amount || 500);
 
+  // New sessions start from the payment details of another paid session in the same event.
+  const findSiblingPaymentDetails = (eventId: string) =>
+    availableEvents
+      .find((e) => e.id === eventId)
+      ?.sessions.find((s) => s.isPaid && s.paymentDetails?.accountNumber)?.paymentDetails;
+  const [prefill] = useState(() => (initialSession ? undefined : findSiblingPaymentDetails(selectedEventId)));
+  const [paymentMethod, setPaymentMethod] = useState(
+    initialSession?.paymentDetails?.method || prefill?.method || PAYMENT_METHODS[0]
+  );
+  const [accountTitle, setAccountTitle] = useState(
+    initialSession?.paymentDetails?.accountTitle || prefill?.accountTitle || ''
+  );
+  const [accountNumber, setAccountNumber] = useState(
+    initialSession?.paymentDetails?.accountNumber || prefill?.accountNumber || ''
+  );
+  const [paymentInstructions, setPaymentInstructions] = useState(
+    initialSession?.paymentDetails?.instructions || prefill?.instructions || ''
+  );
+
   // Inline validation errors
   const [errors, setErrors] = useState<{
     eventId?: string;
@@ -204,6 +225,9 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
     meetingUrl?: string;
     category?: string;
     amount?: string;
+    accountTitle?: string;
+    accountNumber?: string;
+    paymentInstructions?: string;
     capacity?: string;
   }>({});
 
@@ -221,6 +245,9 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
       meetingUrl?: string;
       category?: string;
       amount?: string;
+      accountTitle?: string;
+      accountNumber?: string;
+      paymentInstructions?: string;
       capacity?: string;
     } = {};
 
@@ -262,6 +289,25 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
 
     if (paymentRequired && (!isMoney(amount) || amount <= 0)) {
       newErrors.amount = 'Fee must be from 0 to 1,000,000 with at most 2 decimals.';
+    }
+    if (paymentRequired) {
+      const accountTitleValue = accountTitle.trim();
+      const accountNumberValue = accountNumber.trim();
+      if (!accountTitleValue) {
+        newErrors.accountTitle = 'Please enter the account title where students should send payment.';
+      } else if (accountTitleValue.length > 100) {
+        newErrors.accountTitle = 'Account title must be 100 characters or fewer.';
+      }
+      if (!accountNumberValue) {
+        newErrors.accountNumber = 'Please enter the account number where students should send payment.';
+      } else if (accountNumberValue.length > 34) {
+        newErrors.accountNumber = 'Account number must be 34 characters or fewer.';
+      } else if (!/^[A-Za-z0-9 -]+$/.test(accountNumberValue)) {
+        newErrors.accountNumber = 'Account number can only contain letters, digits, spaces and dashes.';
+      }
+      if (paymentInstructions.trim().length > 500) {
+        newErrors.paymentInstructions = 'Payment instructions must be 500 characters or fewer.';
+      }
     }
     if (!isIntegerInRange(totalSeats, 1, 100000)) {
       newErrors.capacity = 'Capacity must be a whole number from 1 to 100,000.';
@@ -343,6 +389,14 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
       registrationDeadline: safeRegistrationDeadline || undefined,
       isPaid: paymentRequired,
       amount: paymentRequired ? Number(amount) : 0,
+      paymentDetails: paymentRequired
+        ? {
+            method: paymentMethod,
+            accountTitle: accountTitle.trim(),
+            accountNumber: accountNumber.trim(),
+            instructions: paymentInstructions.trim() || undefined,
+          }
+        : undefined,
       resources: initialSession?.resources || [
         {
           id: `res-${Date.now()}`,
@@ -972,7 +1026,7 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
                   htmlFor="session-amount"
                   className="block font-inter text-xs font-medium text-white"
                 >
-                  Registration Fee (in PKR / Rs.) <span className="text-rose-400">*</span>
+                  Registration Fee (Rs.) <span className="text-rose-400">*</span>
                 </label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-3 text-xs font-semibold text-[var(--text-sec-70)]">
@@ -992,6 +1046,79 @@ export const SessionCreatePage: React.FC<SessionCreatePageProps> = ({
                 {errors.amount && (
                   <p className="text-xs text-rose-300 font-inter pt-0.5">{errors.amount}</p>
                 )}
+              </div>
+            )}
+
+            {/* Payment account details */}
+            {paymentRequired && (
+              <div className="pt-2 space-y-3 animate-fadeIn">
+                <span className="block font-inter text-xs font-medium text-white">Payment details</span>
+                <div className="space-y-1.5">
+                  <label htmlFor="session-payment-method" className="block font-inter text-xs text-[var(--text-sec-70)]">
+                    Payment method
+                  </label>
+                  <select
+                    id="session-payment-method"
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full h-11 px-3.5 rounded-xl bg-black/40 border border-white/20 text-sm text-white focus:outline-none focus:border-[var(--primary-accent)]"
+                  >
+                    {PAYMENT_METHODS.map((method) => (
+                      <option key={method} value={method} className="bg-slate-900">{method}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="session-account-title" className="block font-inter text-xs text-[var(--text-sec-70)]">
+                    Account title <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    id="session-account-title"
+                    type="text"
+                    maxLength={100}
+                    value={accountTitle}
+                    onChange={(e) => setAccountTitle(e.target.value)}
+                    placeholder="e.g. Robotics & AI Society"
+                    className="w-full h-11 px-3.5 rounded-xl bg-black/40 border border-white/20 text-sm text-white focus:outline-none focus:border-[var(--primary-accent)]"
+                  />
+                  {errors.accountTitle && (
+                    <p className="text-xs text-rose-300 font-inter pt-0.5">{errors.accountTitle}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="session-account-number" className="block font-inter text-xs text-[var(--text-sec-70)]">
+                    Account number <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    id="session-account-number"
+                    type="text"
+                    maxLength={34}
+                    value={accountNumber}
+                    onChange={(e) => setAccountNumber(e.target.value)}
+                    placeholder="e.g. 0300-1234567 or PK36 SCBL 0000 0011 2345 6702"
+                    className="w-full h-11 px-3.5 rounded-xl bg-black/40 border border-white/20 text-sm text-white focus:outline-none focus:border-[var(--primary-accent)]"
+                  />
+                  {errors.accountNumber && (
+                    <p className="text-xs text-rose-300 font-inter pt-0.5">{errors.accountNumber}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="session-payment-instructions" className="block font-inter text-xs text-[var(--text-sec-70)]">
+                    Instructions (optional)
+                  </label>
+                  <textarea
+                    id="session-payment-instructions"
+                    rows={3}
+                    maxLength={500}
+                    value={paymentInstructions}
+                    onChange={(e) => setPaymentInstructions(e.target.value)}
+                    placeholder="e.g. Write your roll number in the payment reference."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/20 text-sm text-white focus:outline-none focus:border-[var(--primary-accent)]"
+                  />
+                  {errors.paymentInstructions && (
+                    <p className="text-xs text-rose-300 font-inter pt-0.5">{errors.paymentInstructions}</p>
+                  )}
+                </div>
               </div>
             )}
           </div>

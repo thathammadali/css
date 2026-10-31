@@ -28,8 +28,6 @@ const PREDEFINED_CATEGORIES = [
   'General Campus',
 ];
 
-const PAYMENT_METHODS = ['Bank transfer', 'JazzCash', 'Easypaisa', 'Other'];
-
 interface EventCreatePageProps {
   currentRole: DashboardRole;
   currentUserEmail?: string;
@@ -81,10 +79,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
 
   const [isPaid, setIsPaid] = useState(initialEvent?.isPaid || false);
   const [feeAmount, setFeeAmount] = useState<number>(initialEvent?.feeAmount || 500);
-  const [paymentMethod, setPaymentMethod] = useState(initialEvent?.paymentDetails?.method || PAYMENT_METHODS[0]);
-  const [accountTitle, setAccountTitle] = useState(initialEvent?.paymentDetails?.accountTitle || '');
-  const [accountNumber, setAccountNumber] = useState(initialEvent?.paymentDetails?.accountNumber || '');
-  const [paymentInstructions, setPaymentInstructions] = useState(initialEvent?.paymentDetails?.instructions || '');
 
   // Status selection (Only Super Admin can select directly)
   const [status, setStatus] = useState<EventStatus>(
@@ -98,9 +92,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
     organizer?: string;
     registrationDeadline?: string;
     feeAmount?: string;
-    accountTitle?: string;
-    accountNumber?: string;
-    paymentInstructions?: string;
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -133,9 +124,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
       organizer?: string;
       registrationDeadline?: string;
       feeAmount?: string;
-      accountTitle?: string;
-      accountNumber?: string;
-      paymentInstructions?: string;
     } = {};
 
     if (title.trim().length < 3 || title.trim().length > 200) {
@@ -158,25 +146,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
     }
     if (isPaid && (!isMoney(feeAmount) || feeAmount <= 0)) {
       newErrors.feeAmount = 'Fee must be from 0 to 1,000,000 with at most 2 decimals.';
-    }
-    if (isPaid) {
-      const title = accountTitle.trim();
-      const number = accountNumber.trim();
-      if (!title) {
-        newErrors.accountTitle = 'Please enter the account title where students should send payment.';
-      } else if (title.length > 100) {
-        newErrors.accountTitle = 'Account title must be 100 characters or fewer.';
-      }
-      if (!number) {
-        newErrors.accountNumber = 'Please enter the account number where students should send payment.';
-      } else if (number.length > 34) {
-        newErrors.accountNumber = 'Account number must be 34 characters or fewer.';
-      } else if (!/^[A-Za-z0-9 -]+$/.test(number)) {
-        newErrors.accountNumber = 'Account number can only contain letters, digits, spaces and dashes.';
-      }
-      if (paymentInstructions.trim().length > 500) {
-        newErrors.paymentInstructions = 'Payment instructions must be 500 characters or fewer.';
-      }
     }
 
     setErrors(newErrors);
@@ -214,14 +183,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
       capacity: null,
       isPaid,
       feeAmount: isPaid ? Number(feeAmount) : 0,
-      paymentDetails: isPaid
-        ? {
-            method: paymentMethod,
-            accountTitle: accountTitle.trim(),
-            accountNumber: accountNumber.trim(),
-            instructions: paymentInstructions.trim() || undefined,
-          }
-        : undefined,
       createdBy: initialEvent?.createdBy || currentUserEmail || 'admin@university.edu.pk',
       sessions: initialEvent?.sessions || [],
       publishedAt: effectiveStatus === 'PUBLISHED' ? new Date().toISOString() : undefined,
@@ -555,62 +516,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
                 <p className="text-[10px] text-amber-300/80 mt-1">
                   Enrolled attendees must upload and verify their bank/EasyPaisa receipt before this date.
                 </p>
-              </div>
-            )}
-
-            {isPaid && (
-              <div className="sm:col-span-2 p-3 rounded-xl bg-white/[0.04] border border-white/[0.12] space-y-3">
-                <p className="text-xs font-medium text-white">Payment details</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-white/70 mb-1.5">Payment method</label>
-                    <select
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="w-full h-11 px-3 rounded-xl bg-slate-900 border border-white/[0.12] text-xs sm:text-sm text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
-                    >
-                      {PAYMENT_METHODS.map((method) => (
-                        <option key={method} value={method}>{method}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-white/70 mb-1.5">Account title</label>
-                    <input
-                      type="text"
-                      value={accountTitle}
-                      maxLength={100}
-                      onChange={(e) => setAccountTitle(e.target.value)}
-                      placeholder="e.g. Robotics & AI Society"
-                      className="w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
-                    />
-                    {errors.accountTitle && <p className="text-[11px] text-red-400 mt-1">{errors.accountTitle}</p>}
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs text-white/70 mb-1.5">Account number</label>
-                    <input
-                      type="text"
-                      value={accountNumber}
-                      maxLength={34}
-                      onChange={(e) => setAccountNumber(e.target.value)}
-                      placeholder="e.g. 0300-1234567 or PK36 SCBL 0000 0011 2345 6702"
-                      className="w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
-                    />
-                    {errors.accountNumber && <p className="text-[11px] text-red-400 mt-1">{errors.accountNumber}</p>}
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs text-white/70 mb-1.5">Instructions (optional)</label>
-                    <textarea
-                      value={paymentInstructions}
-                      maxLength={500}
-                      rows={3}
-                      onChange={(e) => setPaymentInstructions(e.target.value)}
-                      placeholder="e.g. Write your roll number in the payment reference."
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
-                    />
-                    {errors.paymentInstructions && <p className="text-[11px] text-red-400 mt-1">{errors.paymentInstructions}</p>}
-                  </div>
-                </div>
               </div>
             )}
           </div>

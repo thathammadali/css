@@ -114,6 +114,7 @@ def _clean_account_number(value: str | None) -> str | None:
 
 
 def check_payment_details(fee_amount: Decimal | None, account_title: str | None, account_number: str | None) -> None:
+    """Account title and number are required when the session is paid (its own fee is above 0)."""
     if fee_amount is not None and fee_amount > 0:
         if not account_title:
             raise ValueError("Please enter the account title where students should send payment.")
@@ -138,7 +139,7 @@ class PaymentDetailsMixin(BaseModel):
         return _clean_account_number(v)
 
 
-class EventCreate(PaymentDetailsMixin):
+class EventCreate(BaseModel):
     title: str = Field(min_length=3, max_length=200)
     description: str | None = Field(default=None, max_length=5000)
     category: str | None = Field(default=None, max_length=100)
@@ -147,13 +148,6 @@ class EventCreate(PaymentDetailsMixin):
     registration_deadline: datetime | None = None
     fee_amount: Decimal = Field(default=Decimal("0"), ge=0, le=1000000, decimal_places=2)
     location_type: LocationType | None = None
-
-    @model_validator(mode="after")
-    def payment_details_for_paid_events(self):
-        check_payment_details(self.fee_amount, self.account_title, self.account_number)
-        if self.fee_amount == 0:
-            self.payment_method = self.account_title = self.account_number = self.payment_instructions = None
-        return self
 
 
 class EventOut(BaseModel):
@@ -169,10 +163,6 @@ class EventOut(BaseModel):
     capacity: int | None
     registration_deadline: datetime | None
     fee_amount: Decimal
-    payment_method: str | None = None
-    account_title: str | None = None
-    account_number: str | None = None
-    payment_instructions: str | None = None
     created_by: int
     created_at: datetime
 
@@ -209,7 +199,7 @@ class MeetingLink(BaseModel):
         return self
 
 
-class SessionCreate(BaseModel):
+class SessionCreate(PaymentDetailsMixin):
     title: str = Field(min_length=3, max_length=200)
     starts_at: datetime
     ends_at: datetime
@@ -219,6 +209,7 @@ class SessionCreate(BaseModel):
     meeting_link: str | None = Field(default=None, max_length=500)
     meeting_links: list[MeetingLink] | None = Field(default=None, max_length=5)
     speaker: str | None = Field(default=None, max_length=200)
+    fee_amount: Decimal = Field(default=Decimal("0"), ge=0, le=1000000, decimal_places=2)
 
     @field_validator("meeting_link")
     @classmethod
@@ -240,6 +231,11 @@ class SessionOut(BaseModel):
     meeting_link: str | None = None
     meeting_links: list[MeetingLink] = Field(default_factory=list)
     speaker: str | None = None
+    fee_amount: Decimal = Decimal("0")
+    payment_method: str | None = None
+    account_title: str | None = None
+    account_number: str | None = None
+    payment_instructions: str | None = None
     registered_count: int = 0
 
     @field_validator("meeting_links", mode="before")
@@ -364,7 +360,7 @@ class AnswersUpdate(BaseModel):
     answers: dict[str, AnswerValue]
 
 
-class EventUpdate(PaymentDetailsMixin):
+class EventUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=3, max_length=200)
     description: str | None = Field(default=None, max_length=5000)
     category: str | None = Field(default=None, max_length=100)
@@ -375,7 +371,7 @@ class EventUpdate(PaymentDetailsMixin):
     location_type: LocationType | None = None
 
 
-class SessionUpdate(BaseModel):
+class SessionUpdate(PaymentDetailsMixin):
     title: str | None = Field(default=None, min_length=3, max_length=200)
     starts_at: datetime | None = None
     ends_at: datetime | None = None
@@ -385,6 +381,7 @@ class SessionUpdate(BaseModel):
     meeting_link: str | None = Field(default=None, max_length=500)
     meeting_links: list[MeetingLink] | None = Field(default=None, max_length=5)
     speaker: str | None = Field(default=None, max_length=200)
+    fee_amount: Decimal | None = Field(default=None, ge=0, le=1000000, decimal_places=2)
 
     @field_validator("meeting_link")
     @classmethod

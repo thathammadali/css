@@ -61,7 +61,7 @@ def find_free_open_session(client: httpx.Client, headers: dict) -> tuple[int, di
         return None
     now = datetime.now(timezone.utc)
     for event in response.json():
-        if event.get("status") != "PUBLISHED" or float(event.get("fee_amount") or 0) != 0:
+        if event.get("status") != "PUBLISHED":
             continue
         deadline = event.get("registration_deadline")
         if deadline and datetime.fromisoformat(deadline.replace("Z", "+00:00")) < now:
@@ -78,6 +78,8 @@ def find_free_open_session(client: httpx.Client, headers: dict) -> tuple[int, di
                 continue
             form = form_response.json().get("form")
         for session in sessions.json():
+            if float(session.get("fee_amount") or 0) != 0:
+                continue
             capacity = session.get("capacity") or event.get("capacity")
             if capacity and session.get("registered_count", 0) >= capacity:
                 continue

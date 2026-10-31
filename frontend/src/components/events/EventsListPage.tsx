@@ -28,6 +28,8 @@ interface EventsListPageProps {
 }
 
 import { EmptyState } from '../EmptyState';
+import { getEventFeeLabel } from '../../utils/feeLabel';
+import { formatDeadline } from '../../utils/formatDeadline';
 import { SkeletonState } from '../SkeletonState';
 
 export const EventsListPage: React.FC<EventsListPageProps> = ({
@@ -333,7 +335,7 @@ export const EventsListPage: React.FC<EventsListPageProps> = ({
                         {sessionCount} {sessionCount === 1 ? 'Session' : 'Sessions'}
                       </span>
                       <span className="font-medium text-white">
-                        {evt.isPaid ? `Rs. ${evt.feeAmount}` : 'Free'}
+                        {getEventFeeLabel(evt, 'Free')}
                       </span>
                     </div>
                   </div>
@@ -341,10 +343,7 @@ export const EventsListPage: React.FC<EventsListPageProps> = ({
                   <div className="pt-1 flex items-center justify-between text-xs text-[var(--text-sec-70)]">
                     <span>
                       Deadline:{' '}
-                      {new Date(evt.registrationDeadline).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
+                      {formatDeadline(evt.registrationDeadline)}
                     </span>
                     <span className="inline-flex items-center gap-1 text-[var(--primary-accent)] font-medium group-hover:translate-x-1 transition-transform">
                       View Sessions <ArrowRight className="w-3.5 h-3.5" />

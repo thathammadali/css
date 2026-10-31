@@ -8,7 +8,7 @@ import {
   ClipboardList,
   ShieldCheck,
   Edit3,
-  DollarSign,
+  Banknote,
   CheckCircle2,
   AlertCircle,
   Layers,
@@ -37,6 +37,7 @@ import { getSessionCapacity } from '../../utils/capacityHelper';
 import { registrationApi } from '../../services/registrationApi';
 import { validateReceiptFile } from '../../utils/validators';
 import { PaymentDetailsCard } from '../registration/PaymentDetailsCard';
+import { formatDeadline } from '../../utils/formatDeadline';
 import MeetingLinks from '../MeetingLinks';
 
 interface SessionDetailPageProps {
@@ -371,7 +372,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
 
             {session.isPaid ? (
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-inter font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                <DollarSign className="w-3 h-3" />
+                <Banknote className="w-3 h-3" />
                 <span>Ticket: Rs. {session.amount}</span>
               </span>
             ) : (
@@ -415,7 +416,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
               <span className="text-sm font-medium text-white">{session.date}</span>
               {session.registrationDeadline && (
                 <span className="text-[10px] text-amber-300/90 block font-mono">
-                  Deadline: {session.registrationDeadline}
+                  Deadline: {formatDeadline(session.registrationDeadline)}
                 </span>
               )}
             </div>

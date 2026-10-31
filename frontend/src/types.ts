@@ -239,7 +239,6 @@ export interface EventItem {
   capacity?: number | null;
   isPaid: boolean;
   feeAmount: number;
-  paymentDetails?: PaymentDetails;
   createdBy: string;
   createdAt: string;
   publishedAt?: string;
