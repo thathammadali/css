@@ -18,6 +18,7 @@ import { DashboardRole, AuthUser, ThemeSwatch } from '../../types';
 import { THEME_STORAGE_KEY, applyThemeToDocument } from '../../data/themes';
 import { useTheme } from '../../context/ThemeContext';
 import { apiFetch, authApi } from '../../services/apiClient';
+import { ChangePasswordSection } from './ChangePasswordSection';
 import {
   INVALID_EMAIL_MESSAGE,
   INVALID_PHONE_MESSAGE,
@@ -534,6 +535,22 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             );
           })}
         </div>
+      </div>
+
+      <div id="section-security" className="space-y-4">
+        <div
+          className="flex items-center gap-2.5 pb-2 border-b"
+          style={{ borderColor: 'var(--panel-border)' }}
+        >
+          <Shield className="w-5 h-5 text-[var(--primary-accent)]" />
+          <h3
+            className="font-poppins font-medium text-[18px] sm:text-[19px]"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Security
+          </h3>
+        </div>
+        <ChangePasswordSection />
       </div>
     </div>
   );

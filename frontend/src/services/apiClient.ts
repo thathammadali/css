@@ -106,6 +106,8 @@ export async function readError(res: Response): Promise<string> {
       department: 'Department',
       institution: 'Institution',
       password: 'Password',
+      current_password: 'Current password',
+      new_password: 'New password',
       title: 'Title',
       capacity: 'Capacity',
       fee_amount: 'Fee',
@@ -328,6 +330,15 @@ export const authApi = {
     if (patch.phone !== undefined) body.phone = patch.phone;
     if (patch.institution !== undefined) body.institution = patch.institution;
     return mapBackendUser(await jsonRequest('PATCH', '/auth/me', body));
+  },
+
+  /** PATCH /auth/me/password. A wrong current password is a 400, so it never triggers the 401 sign-out. */
+  async changePassword(currentPassword: string, newPassword: string): Promise<string> {
+    const data = await jsonRequest('PATCH', '/auth/me/password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    return data?.message || 'Password updated';
   },
 
   async checkHealth(): Promise<{ ok: boolean; statusText: string; url: string }> {

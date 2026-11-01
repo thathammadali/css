@@ -10,6 +10,8 @@ load_dotenv()
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
     raise RuntimeError("JWT_SECRET is missing from .env")
+if len(JWT_SECRET) < 32 or JWT_SECRET.startswith("REPLACE_WITH"):
+    raise RuntimeError("JWT_SECRET in .env must be at least 32 random characters and not the placeholder")
 
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "60"))

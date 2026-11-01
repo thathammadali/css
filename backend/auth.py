@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Role, User
 from rate_limit import rate_limit
-from schemas import ProfileUpdate, SignupRequest, TokenOut, UserOut
+from schemas import PasswordChange, ProfileUpdate, SignupRequest, TokenOut, UserOut
 from security import create_access_token, decode_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -140,3 +140,22 @@ def update_me(
     db.commit()
     db.refresh(user)
     return to_user_out(user)
+
+
+@router.patch("/me/password", dependencies=[Depends(rate_limit("password", 5))])
+def change_password(
+    data: PasswordChange,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=422, detail="New password must be at least 8 characters.")
+    if len(data.new_password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=422, detail="New password is too long. Please use 72 bytes or fewer.")
+    if not verify_password(data.current_password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+    if data.new_password == data.current_password:
+        raise HTTPException(status_code=422, detail="New password must be different from the current password.")
+    user.hashed_password = hash_password(data.new_password)
+    db.commit()
+    return {"message": "Password updated"}

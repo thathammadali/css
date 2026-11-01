@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session as DBSession, object_session
 
 from auth import get_current_user, require_roles
 from database import get_db
+from rate_limit import rate_limit
 from models import Certificate, Event, EventSession, Registration, User
 from schemas import (
     CertificateIssue,
@@ -228,7 +229,11 @@ def revoke_certificate(
     return _certificate_response(certificate)
 
 
-@router.get("/certificates/verify/{code}", response_model=CertificateVerifyOut)
+@router.get(
+    "/certificates/verify/{code}",
+    response_model=CertificateVerifyOut,
+    dependencies=[Depends(rate_limit("verify", 30))],
+)
 def verify_certificate(code: str, db: DBSession = Depends(get_db)):
     certificate = (
         db.query(Certificate)

@@ -43,6 +43,7 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
     event_title?: string;
     category?: string;
     issued_at?: string;
+    message?: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -84,7 +85,13 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
     certificateApi
       .verify(targetCertificateId)
       .then(setVerifyResult)
-      .catch((verifyError: any) => setVerifyResult({ valid: false, ...(verifyError?.message ? {} : {}) }));
+      .catch((verifyError: any) =>
+        setVerifyResult(
+          verifyError?.status === 429
+            ? { valid: false, message: 'Too many checks. Please wait a minute and try again.' }
+            : { valid: false },
+        ),
+      );
   }, [isVerifyMode, targetCertificateId]);
 
   const visibleItems = useMemo(() => {
@@ -151,7 +158,7 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
             <p>Issued: {verifyResult.issued_at ? new Date(verifyResult.issued_at).toLocaleDateString() : 'Not specified'}</p>
           </div>
         ) : (
-          <p className="mt-4 text-rose-300">This certificate is invalid or revoked.</p>
+          <p className="mt-4 text-rose-300">{verifyResult.message || 'This certificate is invalid or revoked.'}</p>
         )}
         <button type="button" onClick={onBack} className="mt-6 px-4 py-2 rounded-lg bg-white/10 text-white">
           Back

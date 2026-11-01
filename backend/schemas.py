@@ -50,6 +50,11 @@ class SignupRequest(BaseModel):
         return v
 
 
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class UserOut(BaseModel):
     id: int
     full_name: str
