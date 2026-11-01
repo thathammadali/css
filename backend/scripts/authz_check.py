@@ -170,6 +170,7 @@ def main() -> int:
             ("DELETE", f"/events/{missing_id}"),
             ("DELETE", f"/sessions/{missing_id}"),
             ("PATCH", f"/events/{missing_id}/finish"),
+            ("PATCH", f"/events/{missing_id}/reopen"),
         ]
         for method, path in destructive:
             code = client.request(method, path).status_code

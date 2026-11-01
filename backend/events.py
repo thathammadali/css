@@ -382,3 +382,20 @@ def finish_event(
     db.commit()
     db.refresh(event)
     return event
+
+
+@router.patch("/{event_id}/reopen", response_model=EventOut)
+def reopen_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("super_admin")),
+):
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    if event.status != "FINISHED":
+        raise HTTPException(status_code=400, detail="Only finished events can be reopened.")
+    event.status = "PUBLISHED"
+    db.commit()
+    db.refresh(event)
+    return event

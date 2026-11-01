@@ -10,7 +10,7 @@ import {
 import { CertificateRenderer } from './CertificateRenderer';
 import { TemplateComboBox } from './TemplateComboBox';
 import { certificateApi } from '../../services/certificateApi';
-import { eventService } from '../../services/eventService';
+import { apiFetch, readError } from '../../services/apiClient';
 
 const DETAIL_FIELDS: { key: keyof CertificateSettings; label: string; max: number; multiline?: boolean }[] = [
   { key: 'title', label: 'Title', max: 60 },
@@ -92,7 +92,10 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
   const [busy, setBusy] = useState(false);
   const [bulkEventId, setBulkEventId] = useState('');
   const csvRef = useRef<HTMLInputElement>(null);
-  const events = eventService.getEvents();
+  const [events, setEvents] = useState<{ id: string; title: string }[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(isAdmin);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const [certsLoaded, setCertsLoaded] = useState(false);
 
   const sync = (next: CertificateItem[]) => {
     setItems(next);
@@ -101,6 +104,35 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
   };
 
   useEffect(() => {
+    if (!isAdmin || isVerifyMode) {
+      setEventsLoading(false);
+      return;
+    }
+    let mounted = true;
+    setEventsLoading(true);
+    setEventsError(null);
+    const loadEvents = async () => {
+      try {
+        const res = await apiFetch('/events');
+        if (!res.ok) throw new Error(await readError(res));
+        const list = await res.json();
+        if (mounted && Array.isArray(list)) {
+          setEvents(list.map((item: any) => ({ id: String(item.id), title: String(item.title ?? '') })));
+        }
+      } catch (loadError: any) {
+        if (mounted) setEventsError(loadError?.message || 'Failed to load events.');
+      } finally {
+        if (mounted) setEventsLoading(false);
+      }
+    };
+    loadEvents();
+    return () => {
+      mounted = false;
+    };
+  }, [isAdmin, isVerifyMode]);
+
+  useEffect(() => {
+    if (isAdmin && eventsLoading) return;
     let mounted = true;
     const load = async () => {
       try {
@@ -115,13 +147,15 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
         if (mounted) sync(unique);
       } catch (loadError: any) {
         if (mounted && !isVerifyMode) onNotify(loadError?.message || 'Failed to load certificates.');
+      } finally {
+        if (mounted) setCertsLoaded(true);
       }
     };
     load();
     return () => {
       mounted = false;
     };
-  }, [isAdmin, isVerifyMode]);
+  }, [isAdmin, isVerifyMode, events, eventsLoading]);
 
   useEffect(() => {
     if (!isVerifyMode || !targetCertificateId) return;
@@ -281,6 +315,11 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
             maxLength={100}
             className="w-full rounded-lg bg-white/10 border border-white/15 px-3 py-2 text-white"
           />
+          {eventsLoading && <p className="text-sm text-white/60">Loading events...</p>}
+          {eventsError && <p className="text-sm text-rose-300">{eventsError}</p>}
+          {!eventsLoading && !eventsError && events.length === 0 && (
+            <p className="text-sm text-white/60">No events yet. Create an event first, then you can issue certificates.</p>
+          )}
           {events.map((event) => {
             const eventRegistrants = registrants.filter((reg) => reg.eventId === event.id && reg.backendStatus === 'CONFIRMED' && reg.attended);
             return (
@@ -305,6 +344,9 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
+                  {eventRegistrants.length === 0 && (
+                    <p className="text-sm text-white/60">No attended registrants for this event yet. Mark attendance first.</p>
+                  )}
                   {eventRegistrants.map((reg) => (
                     <label key={reg.id} className="flex items-center gap-2 text-sm text-white/80">
                       <input
@@ -333,7 +375,10 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
             <p className={`text-xs ${item.isValid ? 'text-emerald-300' : 'text-rose-300'}`}>{item.isValid ? 'Issued' : 'Revoked'}</p>
           </button>
         ))}
-        {visibleItems.length === 0 && <p className="text-sm text-white/60">No certificates found.</p>}
+        {visibleItems.length === 0 && isAdmin && <p className="text-sm text-white/60">No certificates found.</p>}
+        {visibleItems.length === 0 && !isAdmin && certsLoaded && (
+          <p className="text-sm text-white/60">You have no certificates yet. They appear here after an admin issues them.</p>
+        )}
       </div>
 
       {viewOpen && active && (
