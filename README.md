@@ -104,7 +104,7 @@ cd /opt/sems/backend
 The person taking over the system should enter their own email and choose their own password at the prompt.
 
 ### 6. Run the API as a systemd service
-Run uvicorn without `--reload`, bound to `127.0.0.1:8000` (only nginx talks to it), with `--proxy-headers --forwarded-allow-ips=127.0.0.1`. Without these flags the rate limiter sees every user as `127.0.0.1`, so all users share one limit. Example `/etc/systemd/system/sems.service`:
+Run uvicorn without `--reload`, bound to `127.0.0.1:8000` (only nginx talks to it), with `--proxy-headers --forwarded-allow-ips=127.0.0.1`. Without these flags the rate limiter sees every user as `127.0.0.1`, so all users share one IP-wide limit (for example the 120 failed logins per minute and 30 signups per minute), and a room of students on one campus address would count against each other. Example `/etc/systemd/system/sems.service`:
 ```ini
 [Unit]
 Description=SEMS API
@@ -168,7 +168,7 @@ Once HTTPS works (step 9), add this line inside both `server` blocks that certbo
 ```nginx
 add_header Strict-Transport-Security "max-age=31536000" always;
 ```
-The `--proxy-headers` flags in the systemd unit are what make the rate limiter use the real client address from `X-Forwarded-For`.
+The `--proxy-headers` flags in the systemd unit are what make the rate limiter use the real client address from `X-Forwarded-For`. Students sharing one public address are not blocked by each other's successful logins, because only failed logins are counted.
 
 ### 9. HTTPS
 ```bash
@@ -205,13 +205,13 @@ nginx serves the new `frontend/dist` straight away; no reload is needed.
 ## Known limitations
 - There is no forgot-password by email. A super admin has to handle a forgotten password manually. There is no password reset script in this repository: `backend/scripts/` contains only `create_super_admin.py` (which does not change the password of an existing account) and `authz_check.py`, so recovery currently means updating the stored hash directly in the database.
 - Fees and payment details are set per session. The event form has no fee field.
-- The rate limiter is kept in memory, per process.
+- The rate limiter is kept in memory, per process. Running several uvicorn workers multiplies every limit by the number of workers, so keep a single worker or move the limiter to a shared store.
 - After a password change, tokens that were already issued stay valid until they expire (`ACCESS_TOKEN_MINUTES`, default 60).
 - The `/docs` page (and `/openapi.json`) is public.
 - There is no forgot-password by email (see the first point).
 
 ## Security notes
-- Passwords are hashed with bcrypt. Login and signup are rate-limited.
+- Passwords are hashed with bcrypt. Rate limits (per minute): login counts only failed attempts, 10 per IP and email pair plus 120 per IP; signup allows 30 per IP and 3 per email; certificate verification allows 120 per IP; change password allows 5 per IP.
 - Uploaded receipts and assignments are stored on the server under `backend/uploads/` and are not publicly listed.
 - In production set `CORS_ORIGINS` to the real frontend address, serve everything over HTTPS, and use a strong `JWT_SECRET`.
 - Back up the database regularly: `pg_dump -U sems_user sems_db > backup.dump`. Never commit dumps, `.env` or uploads.

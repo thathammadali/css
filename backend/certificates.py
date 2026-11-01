@@ -235,7 +235,7 @@ def revoke_certificate(
 @router.get(
     "/certificates/verify/{code}",
     response_model=CertificateVerifyOut,
-    dependencies=[Depends(rate_limit("verify", 30))],
+    dependencies=[Depends(rate_limit("verify", 120))],
 )
 def verify_certificate(code: str, db: DBSession = Depends(get_db)):
     certificate = (
