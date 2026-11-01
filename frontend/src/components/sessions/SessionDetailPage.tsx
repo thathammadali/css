@@ -19,6 +19,7 @@ import {
   Tag,
   ExternalLink,
   Download,
+  Trash2,
 } from 'lucide-react';
 import {
   SessionItem,
@@ -39,6 +40,7 @@ import { validateReceiptFile } from '../../utils/validators';
 import { PaymentDetailsCard } from '../registration/PaymentDetailsCard';
 import { formatDeadline } from '../../utils/formatDeadline';
 import MeetingLinks from '../MeetingLinks';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 interface SessionDetailPageProps {
   session: SessionItem;
@@ -55,6 +57,7 @@ interface SessionDetailPageProps {
   parentEventId?: string;
   onNavigateToParentEvent?: (eventId: string) => void;
   onEditSession?: (session: SessionItem) => void;
+  onDeleteSession?: (session: SessionItem) => void | Promise<void>;
   onUpdateSession?: (updatedSession: SessionItem) => void;
   onReloadRegistrants?: () => Promise<void>;
   onNotify: (msg: string) => void;
@@ -75,11 +78,14 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
   parentEventId,
   onNavigateToParentEvent,
   onEditSession,
+  onDeleteSession,
   onUpdateSession,
   onReloadRegistrants,
   onNotify,
 }) => {
   const [registered, setRegistered] = useState(isRegistered);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
@@ -356,6 +362,35 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({
             <span className="hidden sm:inline">Edit Session</span>
           </button>
         )}
+        {currentRole === 'super_admin' && onDeleteSession && (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="px-3.5 py-2 rounded-xl bg-rose-600/80 hover:bg-rose-500 text-xs font-medium text-white flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Delete Session</span>
+          </button>
+        )}
+        <ConfirmDialog
+          isOpen={confirmDelete}
+          title={`Delete "${session.title}"?`}
+          message="This permanently deletes the session. This cannot be undone. Sessions with registrations cannot be deleted."
+          confirmText="Delete"
+          variant="danger"
+          isProcessing={isDeleting}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={async () => {
+            if (!onDeleteSession) return;
+            setIsDeleting(true);
+            try {
+              await onDeleteSession(session);
+            } finally {
+              setIsDeleting(false);
+              setConfirmDelete(false);
+            }
+          }}
+        />
       </div>
 
       {/* Main Hero Card */}

@@ -15,6 +15,7 @@ from schemas import (
     CertificateIssue,
     CertificateOut,
     CertificateRevoke,
+    CertificateSettingsUpdate,
     CertificateVerifyOut,
     TemplateUpdate,
 )
@@ -46,6 +47,8 @@ def _certificate_response(certificate: Certificate) -> dict:
         owner = session.get(User, certificate.user_id) if session else None
         roll = owner.roll_number if owner else None
     response["recipient_roll"] = roll
+    response["certificate_template"] = certificate.event.certificate_template
+    response["certificate_settings"] = certificate.event.certificate_settings
     return response
 
 
@@ -271,6 +274,20 @@ def set_template(
     event.certificate_template = data.template
     db.commit()
     return {"template": event.certificate_template}
+
+
+@router.put("/events/{event_id}/certificate-settings")
+def set_certificate_settings(
+    event_id: int,
+    data: CertificateSettingsUpdate,
+    db: DBSession = Depends(get_db),
+    admin: User = Depends(admin_only),
+):
+    event = _event_or_404(db, event_id)
+    cleaned = {key: value for key, value in data.model_dump().items() if value is not None}
+    event.certificate_settings = cleaned or None
+    db.commit()
+    return {"settings": event.certificate_settings}
 
 
 @router.post("/certificates/{certificate_id}/reinstate", response_model=CertificateOut)

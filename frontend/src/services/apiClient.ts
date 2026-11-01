@@ -275,7 +275,7 @@ export const authApi = {
     };
   },
 
-  /** POST /auth/signup (JSON). Always creates a student. Roll number / department are set later via updateProfile. */
+  /** POST /auth/signup (JSON), then login for the token, then PATCH /auth/me for roll number / department (students). */
   async register(
     params: AuthRegisterParams
   ): Promise<{ success: boolean; user?: UserAccount; isBackendConnected?: boolean; error?: string }> {
@@ -299,11 +299,26 @@ export const authApi = {
 
     if (res) {
       if (!res.ok) return { success: false, error: await readError(res), isBackendConnected: true };
-      const data = await res.json().catch(() => null);
-      const user = data ? mapBackendUser(data) : undefined;
-      if (user) {
-        user.department = params.department || user.department;
-        user.rollNumber = params.rollNumber || user.rollNumber;
+      const signedIn = await authApi.login(normalizedEmail, params.password || '');
+      if (!signedIn.success || !signedIn.user) {
+        return {
+          success: false,
+          error: 'Your account was created, but we could not sign you in. Please sign in.',
+          isBackendConnected: true,
+        };
+      }
+      let user = signedIn.user;
+      const rollNumber = params.rollNumber?.trim();
+      const department = params.department?.trim();
+      if (params.accountType !== 'guest' && (rollNumber || department)) {
+        try {
+          user = await authApi.updateProfile({
+            ...(rollNumber ? { rollNumber } : {}),
+            ...(department ? { department } : {}),
+          });
+        } catch {
+          user = signedIn.user;
+        }
       }
       return { success: true, user, isBackendConnected: true };
     }
@@ -607,6 +622,22 @@ export const eventsApi = {
   /** super_admin only. */
   async publishEvent(eventId: string): Promise<EventItem> {
     const raw = await jsonRequest('POST', `/events/${encodeURIComponent(eventId)}/publish`);
+    return mapBackendEvent(raw, []);
+  },
+
+  /** super_admin only. 409 if the event has registrations. */
+  async deleteEvent(eventId: string): Promise<void> {
+    await jsonRequest('DELETE', `/events/${encodeURIComponent(eventId)}`);
+  },
+
+  /** super_admin only. 409 if the session has registrations. */
+  async deleteSession(sessionId: string): Promise<void> {
+    await jsonRequest('DELETE', `/sessions/${encodeURIComponent(sessionId)}`);
+  },
+
+  /** super_admin only. Published events only. */
+  async finishEvent(eventId: string): Promise<EventItem> {
+    const raw = await jsonRequest('PATCH', `/events/${encodeURIComponent(eventId)}/finish`);
     return mapBackendEvent(raw, []);
   },
 

@@ -44,6 +44,7 @@ class Event(Base):
     form_version = Column(Integer, nullable=False, default=0, server_default="0")
     location_type = Column(String, nullable=True)  # on_campus, virtual, hybrid
     certificate_template = Column(JSON(none_as_null=True), nullable=True)
+    certificate_settings = Column(JSON(none_as_null=True), nullable=True)
 
     @property
     def has_form(self) -> bool:

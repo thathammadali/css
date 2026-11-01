@@ -30,7 +30,8 @@ export type EventStatus =
   | 'LIVE'
   | 'COMPLETED'
   | 'CANCELLED'
-  | 'ARCHIVED';
+  | 'ARCHIVED'
+  | 'FINISHED';
 
 export type SessionStatus = 'open' | 'closing_soon' | 'closed';
 
@@ -359,6 +360,16 @@ export type CertificateTemplateStyle =
 
 export type CertificateTemplateFormat = 'html' | 'image';
 
+export interface CertificateSettings {
+  title?: string;
+  bodyLine?: string;
+  societyName?: string;
+  signatory1Name?: string;
+  signatory1Title?: string;
+  signatory2Name?: string;
+  signatory2Title?: string;
+}
+
 export interface CertificateSignatory {
   name: string;
   title: string;
@@ -408,6 +419,8 @@ export interface CertificateItem {
   templateStyle?: CertificateTemplateStyle;
   templateFormat?: CertificateTemplateFormat;
   templateVersion?: number;
+  eventId?: string;
+  settings?: CertificateSettings;
   customTitle?: string;
   customSubtitle?: string;
   grade?: string;

@@ -165,6 +165,26 @@ def main() -> int:
             code = client.request(method, path, headers=student, json=body).status_code
             check(f"student {method} {path} -> 403", code == 403, str(code))
 
+        missing_id = 2_000_000_000
+        destructive = [
+            ("DELETE", f"/events/{missing_id}"),
+            ("DELETE", f"/sessions/{missing_id}"),
+            ("PATCH", f"/events/{missing_id}/finish"),
+        ]
+        for method, path in destructive:
+            code = client.request(method, path).status_code
+            check(f"no token {method} {path} -> 401", code == 401, str(code))
+            code = client.request(method, path, headers=student).status_code
+            check(f"student {method} {path} -> 403", code == 403, str(code))
+            code = client.request(method, path, headers=admin).status_code
+            check(f"admin {method} {path} -> 403", code == 403, str(code))
+
+        settings_path = f"/events/{missing_id}/certificate-settings"
+        code = client.put(settings_path, json={}).status_code
+        check(f"no token PUT {settings_path} -> 401", code == 401, str(code))
+        code = client.put(settings_path, headers=student, json={}).status_code
+        check(f"student PUT {settings_path} -> 403", code == 403, str(code))
+
         victim_reg_id, skip_reason = create_victim_registration(client, admin)
         if victim_reg_id is None and skip_reason:
             skip("second student registration setup", skip_reason)

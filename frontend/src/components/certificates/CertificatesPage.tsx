@@ -1,8 +1,47 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CertificateItem, DashboardRole, RegistrantItem, UserRole } from '../../types';
+import {
+  CertificateItem,
+  CertificateSettings,
+  CertificateTemplateStyle,
+  DashboardRole,
+  RegistrantItem,
+  UserRole,
+} from '../../types';
 import { CertificateRenderer } from './CertificateRenderer';
+import { TemplateComboBox } from './TemplateComboBox';
 import { certificateApi } from '../../services/certificateApi';
 import { eventService } from '../../services/eventService';
+
+const DETAIL_FIELDS: { key: keyof CertificateSettings; label: string; max: number; multiline?: boolean }[] = [
+  { key: 'title', label: 'Title', max: 60 },
+  { key: 'societyName', label: 'Society name', max: 60 },
+  { key: 'bodyLine', label: 'Wording line', max: 160, multiline: true },
+  { key: 'signatory1Name', label: 'Signatory 1 name', max: 60 },
+  { key: 'signatory1Title', label: 'Signatory 1 title', max: 60 },
+  { key: 'signatory2Name', label: 'Signatory 2 name', max: 60 },
+  { key: 'signatory2Title', label: 'Signatory 2 title', max: 60 },
+];
+
+type SettingsDraft = Record<keyof CertificateSettings, string>;
+
+const toDraft = (settings?: CertificateSettings): SettingsDraft => ({
+  title: settings?.title || '',
+  bodyLine: settings?.bodyLine || '',
+  societyName: settings?.societyName || '',
+  signatory1Name: settings?.signatory1Name || '',
+  signatory1Title: settings?.signatory1Title || '',
+  signatory2Name: settings?.signatory2Name || '',
+  signatory2Title: settings?.signatory2Title || '',
+});
+
+const draftToSettings = (draft: SettingsDraft): CertificateSettings => {
+  const settings: CertificateSettings = {};
+  DETAIL_FIELDS.forEach(({ key }) => {
+    const value = draft[key].trim();
+    if (value) settings[key] = value;
+  });
+  return settings;
+};
 
 interface CertificatesPageProps {
   currentRole: DashboardRole;
@@ -33,6 +72,10 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
   const isAdmin = currentRole === 'admin' || currentRole === 'super_admin';
   const [items, setItems] = useState<CertificateItem[]>([]);
   const [active, setActive] = useState<CertificateItem | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [templateStyle, setTemplateStyle] = useState<CertificateTemplateStyle | undefined>(undefined);
+  const [draft, setDraft] = useState<SettingsDraft>(toDraft());
+  const [savingDetails, setSavingDetails] = useState(false);
   const [category, setCategory] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [revokeTarget, setRevokeTarget] = useState<CertificateItem | null>(null);
@@ -53,7 +96,7 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
 
   const sync = (next: CertificateItem[]) => {
     setItems(next);
-    setActive(next[0] || null);
+    setActive((prev) => next.find((item) => item.id === prev?.id) || next[0] || null);
     onUpdateCertificates?.(next);
   };
 
@@ -97,6 +140,56 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
   const visibleItems = useMemo(() => {
     return items;
   }, [items]);
+
+  useEffect(() => {
+    if (!viewOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !revokeTarget) setViewOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [viewOpen, revokeTarget]);
+
+  useEffect(() => {
+    if (!viewOpen || !active) return;
+    setDraft(toDraft(active.settings));
+    setTemplateStyle(active.templateStyle);
+  }, [viewOpen, active?.eventId]);
+
+  const applyToEvent = (eventId: string | undefined, patch: Partial<CertificateItem>) => {
+    if (!eventId) return;
+    sync(items.map((item) => (item.eventId === eventId ? { ...item, ...patch } : item)));
+  };
+
+  const chooseTemplate = async (style: CertificateTemplateStyle) => {
+    if (!active) return;
+    const previous = templateStyle;
+    setTemplateStyle(style);
+    if (!active.eventId) return;
+    try {
+      const saved = await certificateApi.saveTemplate(active.eventId, style);
+      applyToEvent(active.eventId, { templateStyle: saved });
+      onNotify('Certificate template saved.');
+    } catch (saveError: any) {
+      setTemplateStyle(previous);
+      onNotify(saveError?.message || 'Could not save the template.');
+    }
+  };
+
+  const saveDetails = async (settings: CertificateSettings) => {
+    if (!active?.eventId) return;
+    setSavingDetails(true);
+    try {
+      const saved = await certificateApi.saveSettings(active.eventId, settings);
+      applyToEvent(active.eventId, { settings: saved });
+      setDraft(toDraft(saved));
+      onNotify(saved ? 'Certificate details saved.' : 'Certificate details reset to default.');
+    } catch (saveError: any) {
+      onNotify(saveError?.message || 'Could not save the certificate details.');
+    } finally {
+      setSavingDetails(false);
+    }
+  };
 
   const run = async (action: () => Promise<CertificateItem[] | CertificateItem>) => {
     setBusy(true);
@@ -232,35 +325,107 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        <div className="space-y-2">
-          {visibleItems.map((item) => (
-            <button key={item.id} type="button" onClick={() => setActive(item)} className={`w-full text-left rounded-xl border p-3 ${active?.id === item.id ? 'border-cyan-400 bg-cyan-950/30' : 'border-white/10 bg-white/[0.03]'}`}>
-              <p className="text-white font-medium">{item.recipientName}</p>
-              <p className="text-xs text-white/60">{item.eventName || item.sessionTitle} · {item.verificationCode}</p>
-              <p className={`text-xs ${item.isValid ? 'text-emerald-300' : 'text-rose-300'}`}>{item.isValid ? 'Issued' : 'Revoked'}</p>
-            </button>
-          ))}
-          {visibleItems.length === 0 && <p className="text-sm text-white/60">No certificates found.</p>}
-        </div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {visibleItems.map((item) => (
+          <button key={item.id} type="button" onClick={() => { setActive(item); setViewOpen(true); }} className={`w-full text-left rounded-xl border p-3 ${active?.id === item.id ? 'border-cyan-400 bg-cyan-950/30' : 'border-white/10 bg-white/[0.03]'}`}>
+            <p className="text-white font-medium">{item.recipientName}</p>
+            <p className="text-xs text-white/60">{item.eventName || item.sessionTitle} · {item.verificationCode}</p>
+            <p className={`text-xs ${item.isValid ? 'text-emerald-300' : 'text-rose-300'}`}>{item.isValid ? 'Issued' : 'Revoked'}</p>
+          </button>
+        ))}
+        {visibleItems.length === 0 && <p className="text-sm text-white/60">No certificates found.</p>}
+      </div>
 
-        {active && (
-          <div className="space-y-3">
-            <div className="no-print flex justify-end">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="px-3 py-2 rounded-lg bg-cyan-600/80 text-white"
-              >
-                Print / Save as PDF
+      {viewOpen && active && (
+        <div className="fixed inset-0 z-40 overflow-y-auto bg-slate-950 print:bg-white">
+          <div className="mx-auto w-full max-w-[1200px] space-y-4 p-4 sm:p-6">
+            <div className="no-print flex flex-wrap items-center justify-between gap-3">
+              <button type="button" onClick={() => setViewOpen(false)} className="px-4 py-2 rounded-lg bg-white/10 text-white">
+                Back
               </button>
+              <div className="flex flex-wrap items-center gap-3">
+                {isAdmin && (
+                  <TemplateComboBox
+                    activeStyle={templateStyle || active.templateStyle || 'classic_ivory'}
+                    onSelectTemplate={(template) => chooseTemplate(template.id)}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-2 rounded-lg bg-cyan-600/80 text-white"
+                >
+                  Print / Save as PDF
+                </button>
+              </div>
             </div>
-            <div id="printable-certificate">
-              <CertificateRenderer certificate={active} />
-            </div>
-            <p className="text-sm text-white">Certificate code: <strong>{active.verificationCode}</strong></p>
             {isAdmin && (
-              <div className="flex gap-2">
+              <div className="no-print rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-white">Certificate details</h2>
+                  <p className="text-xs text-white/60">
+                    Applies to every certificate of {active.eventName || 'this event'}. Leave a field empty to keep the default text.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {DETAIL_FIELDS.map(({ key, label, max, multiline }) => (
+                    <label key={key} className={`block space-y-1 ${multiline ? 'sm:col-span-2' : ''}`}>
+                      <span className="flex items-center justify-between text-xs text-white/70">
+                        <span>{label}</span>
+                        <span>{draft[key].length}/{max}</span>
+                      </span>
+                      {multiline ? (
+                        <textarea
+                          value={draft[key]}
+                          maxLength={max}
+                          rows={2}
+                          onChange={(input) => setDraft((prev) => ({ ...prev, [key]: input.target.value }))}
+                          className="w-full rounded-lg bg-white/10 border border-white/15 px-3 py-2 text-sm text-white"
+                        />
+                      ) : (
+                        <input
+                          value={draft[key]}
+                          maxLength={max}
+                          onChange={(input) => setDraft((prev) => ({ ...prev, [key]: input.target.value }))}
+                          className="w-full rounded-lg bg-white/10 border border-white/15 px-3 py-2 text-sm text-white"
+                        />
+                      )}
+                    </label>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={savingDetails}
+                    onClick={() => saveDetails(draftToSettings(draft))}
+                    className="px-3 py-2 rounded-lg bg-emerald-600/80 text-white disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingDetails}
+                    onClick={() => {
+                      setDraft(toDraft());
+                      saveDetails({});
+                    }}
+                    className="px-3 py-2 rounded-lg bg-white/10 text-white disabled:opacity-50"
+                  >
+                    Reset to default
+                  </button>
+                </div>
+              </div>
+            )}
+            <div id="printable-certificate">
+              <CertificateRenderer
+                certificate={active}
+                style={isAdmin ? templateStyle : undefined}
+                settings={isAdmin ? draftToSettings(draft) : active.settings}
+              />
+            </div>
+            <p className="no-print text-sm text-white">Certificate code: <strong>{active.verificationCode}</strong></p>
+            {isAdmin && (
+              <div className="no-print flex gap-2">
                 {active.isValid ? (
                   <button type="button" onClick={() => setRevokeTarget(active)} className="px-3 py-2 rounded-lg bg-rose-600/80 text-white">Revoke</button>
                 ) : (
@@ -269,8 +434,8 @@ export const CertificatesPage: React.FC<CertificatesPageProps> = ({
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {revokeTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">

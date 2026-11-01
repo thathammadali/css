@@ -1,10 +1,42 @@
-import { CertificateItem } from '../types';
+import { CertificateItem, CertificateSettings, CertificateTemplateStyle } from '../types';
 import { apiFetch, ApiError, readError } from './apiClient';
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await apiFetch(path, options);
   if (!response.ok) throw new ApiError(await readError(response), response.status);
   return response.json() as Promise<T>;
+}
+
+const TEMPLATE_STYLES: CertificateTemplateStyle[] = [
+  'classic_ivory',
+  'modern_tech',
+  'royal_navy',
+  'ornate_image_frame',
+  'modern_vector_frame',
+  'minimal_monochrome',
+  'emerald_executive',
+  'crimson_heritage',
+  'sapphire_vector',
+];
+
+const SETTINGS_KEYS: Record<keyof CertificateSettings, string> = {
+  title: 'title',
+  bodyLine: 'body_line',
+  societyName: 'society_name',
+  signatory1Name: 'signatory1_name',
+  signatory1Title: 'signatory1_title',
+  signatory2Name: 'signatory2_name',
+  signatory2Title: 'signatory2_title',
+};
+
+export function mapBackendSettings(raw: any): CertificateSettings | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const settings: CertificateSettings = {};
+  (Object.keys(SETTINGS_KEYS) as (keyof CertificateSettings)[]).forEach((key) => {
+    const value = raw[SETTINGS_KEYS[key]];
+    if (typeof value === 'string' && value) settings[key] = value;
+  });
+  return Object.keys(settings).length ? settings : undefined;
 }
 
 export function mapBackendCertificate(raw: any): CertificateItem {
@@ -24,7 +56,11 @@ export function mapBackendCertificate(raw: any): CertificateItem {
     issueDate: issuedAt,
     isValid: valid,
     status: valid ? 'approved' : 'revoked',
-    templateStyle: 'classic_ivory',
+    eventId: raw.event_id !== undefined ? String(raw.event_id) : undefined,
+    templateStyle: TEMPLATE_STYLES.includes(raw.certificate_template?.style)
+      ? raw.certificate_template.style
+      : 'classic_ivory',
+    settings: mapBackendSettings(raw.certificate_settings),
     templateFormat: 'html',
     statusTag: raw.status_tag ?? undefined,
     revocationReason: raw.revoke_reason ?? undefined,
@@ -67,6 +103,28 @@ export const certificateApi = {
   async listForEvent(eventId: string): Promise<CertificateItem[]> {
     const raw = await request<any[]>(`/events/${encodeURIComponent(eventId)}/certificates`);
     return raw.map(mapBackendCertificate);
+  },
+
+  async saveTemplate(eventId: string, style: CertificateTemplateStyle): Promise<CertificateTemplateStyle> {
+    const raw = await request<any>(`/events/${encodeURIComponent(eventId)}/certificate-template`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template: { style } }),
+    });
+    return TEMPLATE_STYLES.includes(raw?.template?.style) ? raw.template.style : style;
+  },
+
+  async saveSettings(eventId: string, settings: CertificateSettings): Promise<CertificateSettings | undefined> {
+    const body: Record<string, string | null> = {};
+    (Object.keys(SETTINGS_KEYS) as (keyof CertificateSettings)[]).forEach((key) => {
+      body[SETTINGS_KEYS[key]] = settings[key]?.trim() || null;
+    });
+    const raw = await request<any>(`/events/${encodeURIComponent(eventId)}/certificate-settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return mapBackendSettings(raw?.settings);
   },
 
   async mine(): Promise<CertificateItem[]> {

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from assignments import router as assignments_router
 from auth import router as auth_router
 from certificates import router as certificates_router
-from events import router as events_router
+from events import router as events_router, sessions_router
 from forms import router as forms_router
 from payments import router as payments_router
 from registrations import router as registrations_router
@@ -47,6 +47,7 @@ async def security_headers(request: Request, call_next):
 
 app.include_router(auth_router)
 app.include_router(events_router)
+app.include_router(sessions_router)
 app.include_router(forms_router)
 app.include_router(payments_router)
 app.include_router(registrations_router)

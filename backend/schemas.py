@@ -428,6 +428,8 @@ class CertificateOut(BaseModel):
     is_valid: bool
     revoked_at: datetime | None
     revoke_reason: str | None
+    certificate_template: dict | None = None
+    certificate_settings: dict | None = None
 
     class Config:
         from_attributes = True
@@ -443,3 +445,18 @@ class CertificateVerifyOut(BaseModel):
 
 class TemplateUpdate(BaseModel):
     template: dict | None
+
+
+class CertificateSettingsUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=60)
+    body_line: str | None = Field(default=None, max_length=160)
+    society_name: str | None = Field(default=None, max_length=60)
+    signatory1_name: str | None = Field(default=None, max_length=60)
+    signatory1_title: str | None = Field(default=None, max_length=60)
+    signatory2_name: str | None = Field(default=None, max_length=60)
+    signatory2_title: str | None = Field(default=None, max_length=60)
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def clean_text(cls, value):
+        return _clean_text(value, empty_to_none=True) if isinstance(value, str) else value

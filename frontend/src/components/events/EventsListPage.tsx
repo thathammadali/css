@@ -80,6 +80,12 @@ export const EventsListPage: React.FC<EventsListPageProps> = ({
           classes: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
           dot: 'bg-amber-400 animate-pulse',
         };
+      case 'FINISHED':
+        return {
+          label: 'Finished',
+          classes: 'bg-white/10 text-white/60 border border-white/20',
+          dot: 'bg-white/40',
+        };
       case 'DRAFT':
         return {
           label: 'Draft',
@@ -212,7 +218,7 @@ export const EventsListPage: React.FC<EventsListPageProps> = ({
         {/* Status filters */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           {(canCreateEvent
-            ? (['all', 'PUBLISHED', 'UPCOMING', 'PENDING_APPROVAL', 'DRAFT'] as const)
+            ? (['all', 'PUBLISHED', 'UPCOMING', 'PENDING_APPROVAL', 'DRAFT', 'FINISHED'] as const)
             : (['all', 'PUBLISHED', 'UPCOMING'] as const)
           ).map((st) => (
             <button

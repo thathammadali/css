@@ -19,9 +19,12 @@ import {
   Users,
   Video,
   ExternalLink,
+  Trash2,
+  Flag,
 } from 'lucide-react';
 import { EventItem, SessionItem, DashboardRole, EventStatus } from '../../types';
 import MeetingLinks from '../MeetingLinks';
+import { ConfirmDialog } from '../ConfirmDialog';
 import { getEventFeeLabel } from '../../utils/feeLabel';
 import { formatDeadline } from '../../utils/formatDeadline';
 
@@ -34,6 +37,8 @@ interface EventDetailPageProps {
   onAddSessionToEvent: (event: EventItem) => void;
   onEditEvent?: (event: EventItem) => void;
   onApproveEvent: (eventId: string) => void | Promise<void>;
+  onDeleteEvent?: (event: EventItem) => void | Promise<void>;
+  onFinishEvent?: (event: EventItem) => void | Promise<void>;
   onNotify: (msg: string) => void;
 }
 
@@ -46,8 +51,13 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
   onAddSessionToEvent,
   onEditEvent,
   onApproveEvent,
+  onDeleteEvent,
+  onFinishEvent,
   onNotify,
 }) => {
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [confirmFinish, setConfirmFinish] = React.useState(false);
+  const [isWorking, setIsWorking] = React.useState(false);
 
   const isSuperAdmin = currentRole === 'super_admin';
   const isAdmin = currentRole === 'admin';
@@ -72,6 +82,12 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
           label: 'Pending Approval',
           classes: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
           dot: 'bg-amber-400 animate-pulse',
+        };
+      case 'FINISHED':
+        return {
+          label: 'Finished',
+          classes: 'bg-white/10 text-white/60 border border-white/20',
+          dot: 'bg-white/40',
         };
       case 'DRAFT':
         return {
@@ -134,6 +150,27 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
             </button>
           )}
 
+          {isSuperAdmin && onFinishEvent && event.status === 'PUBLISHED' && (
+            <button
+              type="button"
+              onClick={() => setConfirmFinish(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+            >
+              <Flag className="w-3.5 h-3.5" />
+              <span>Finish Event</span>
+            </button>
+          )}
+          {isSuperAdmin && onDeleteEvent && (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-rose-600/80 hover:bg-rose-500 text-white text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Event</span>
+            </button>
+          )}
+
           <span
             className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${badge.classes}`}
           >
@@ -142,6 +179,46 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
           </span>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={confirmDelete}
+        title={`Delete "${event.title}"?`}
+        message="This permanently deletes the event and all of its sessions. This cannot be undone. Events with registrations cannot be deleted."
+        confirmText="Delete"
+        variant="danger"
+        confirmPhrase={event.title}
+        isProcessing={isWorking}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={async () => {
+          if (!onDeleteEvent) return;
+          setIsWorking(true);
+          try {
+            await onDeleteEvent(event);
+          } finally {
+            setIsWorking(false);
+            setConfirmDelete(false);
+          }
+        }}
+      />
+      <ConfirmDialog
+        isOpen={confirmFinish}
+        title={`Finish "${event.title}"?`}
+        message="Finished events are hidden from students and stop accepting registrations."
+        confirmText="Finish event"
+        variant="warning"
+        isProcessing={isWorking}
+        onCancel={() => setConfirmFinish(false)}
+        onConfirm={async () => {
+          if (!onFinishEvent) return;
+          setIsWorking(true);
+          try {
+            await onFinishEvent(event);
+          } finally {
+            setIsWorking(false);
+            setConfirmFinish(false);
+          }
+        }}
+      />
 
       {/* Super Admin Approval Gate Banner */}
       {event.status === 'PENDING_APPROVAL' && (

@@ -1,13 +1,14 @@
+import os
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.orm import Session
 
 from auth import get_current_user_optional, require_roles
 from database import get_db
-from models import Event, EventSession, Registration, User
+from models import Assignment, AssignmentSubmission, Certificate, Event, EventSession, Registration, User
 from schemas import (
     EventCreate,
     EventOut,
@@ -21,6 +22,7 @@ from schemas import (
 PAYMENT_FIELDS = {"payment_method", "account_title", "account_number", "payment_instructions"}
 
 router = APIRouter(prefix="/events", tags=["events"])
+sessions_router = APIRouter(prefix="/sessions", tags=["events"])
 
 
 def _is_admin(user: User | None) -> bool:
@@ -74,7 +76,7 @@ def list_events(
     pkt = timezone(timedelta(hours=5))
     query = db.query(Event)
     if not _is_admin(user):
-        query = query.filter(Event.status != "DRAFT")
+        query = query.filter(Event.status.notin_(("DRAFT", "FINISHED")))
     if category:
         query = query.filter(Event.category == category)
     if location_type:
@@ -285,3 +287,98 @@ def update_session(
     db.commit()
     db.refresh(event_session)
     return event_session
+
+HAS_REGISTRATIONS = "This cannot be deleted because it has registrations. Cancel or finish it instead."
+
+
+def _delete_sessions(db: Session, session_ids: list[int]) -> list[str]:
+    """Deletes the assignments (and submissions) of these sessions, then the sessions. Returns file paths to remove after commit."""
+    if not session_ids:
+        return []
+    assignment_ids = select(Assignment.id).where(Assignment.session_id.in_(session_ids))
+    files = list(
+        db.scalars(select(AssignmentSubmission.file_path).where(AssignmentSubmission.assignment_id.in_(assignment_ids)))
+    )
+    db.execute(delete(AssignmentSubmission).where(AssignmentSubmission.assignment_id.in_(assignment_ids)))
+    db.execute(delete(Assignment).where(Assignment.session_id.in_(session_ids)))
+    db.execute(delete(EventSession).where(EventSession.id.in_(session_ids)))
+    return files
+
+
+def _remove_files(paths: list[str]) -> None:
+    for path in paths:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+@router.delete("/{event_id}")
+def delete_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("super_admin")),
+):
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    registrations = db.scalar(
+        select(func.count(Registration.id))
+        .join(EventSession, Registration.session_id == EventSession.id)
+        .where(EventSession.event_id == event_id)
+    )
+    if registrations:
+        raise HTTPException(status_code=409, detail=HAS_REGISTRATIONS)
+    if db.scalar(select(func.count(Certificate.id)).where(Certificate.event_id == event_id)):
+        raise HTTPException(
+            status_code=409,
+            detail="This cannot be deleted because certificates were issued for it. Finish it instead.",
+        )
+    try:
+        session_ids = list(db.scalars(select(EventSession.id).where(EventSession.event_id == event_id)))
+        files = _delete_sessions(db, session_ids)
+        db.execute(delete(Event).where(Event.id == event_id))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    _remove_files(files)
+    return {"message": "Event deleted"}
+
+
+@sessions_router.delete("/{session_id}")
+def delete_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("super_admin")),
+):
+    event_session = db.get(EventSession, session_id)
+    if event_session is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if db.scalar(select(func.count(Registration.id)).where(Registration.session_id == session_id)):
+        raise HTTPException(status_code=409, detail=HAS_REGISTRATIONS)
+    try:
+        files = _delete_sessions(db, [session_id])
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    _remove_files(files)
+    return {"message": "Session deleted"}
+
+
+@router.patch("/{event_id}/finish", response_model=EventOut)
+def finish_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("super_admin")),
+):
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    if event.status != "PUBLISHED":
+        raise HTTPException(status_code=400, detail=f"Only a published event can be finished, not '{event.status}'.")
+    event.status = "FINISHED"
+    db.commit()
+    db.refresh(event)
+    return event

@@ -232,6 +232,46 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
     }
   };
 
+  const handleDeleteEvent = async (event: EventItem) => {
+    try {
+      await eventsApi.deleteEvent(event.id);
+      await eventService.refreshFromBackend();
+      onUpdateEvents(eventService.getEvents());
+      onNotify(`Event "${event.title}" deleted.`);
+      setSelectedEventId(null);
+      setSubScreen('events');
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to delete event.');
+    }
+  };
+
+  const handleFinishEvent = async (event: EventItem) => {
+    try {
+      await eventsApi.finishEvent(event.id);
+      await eventService.refreshFromBackend();
+      onUpdateEvents(eventService.getEvents());
+      onNotify(`Event "${event.title}" marked as finished.`);
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to finish event.');
+    }
+  };
+
+  const handleDeleteSession = async (session: SessionItem) => {
+    try {
+      await eventsApi.deleteSession(session.id);
+      await eventService.refreshFromBackend();
+      onUpdateEvents(eventService.getEvents());
+      onNotify(`Session "${session.title}" deleted.`);
+      setSelectedSessionId(null);
+      if (window.location.hash.startsWith('#/sessions/')) {
+        window.location.hash = '#/sessions';
+      }
+      setSubScreen(session.eventId ? 'event-detail' : 'list');
+    } catch (error: any) {
+      onNotify(error?.message || 'Failed to delete session.');
+    }
+  };
+
   // Session persistence actions (Strictly tied to parent events)
   const handleSaveSession = async (newOrUpdatedSession: SessionItem) => {
     const targetEventId = newOrUpdatedSession.eventId || selectedEventId;
@@ -359,6 +399,7 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
         onNavigateToAuth={() => onNavigateToAuth('login')}
         onOpenRegistration={handleOpenRegistration}
         onEditSession={handleNavigateToEditSession}
+        onDeleteSession={handleDeleteSession}
         onUpdateSession={handleSaveSession}
         onReloadRegistrants={onReloadRegistrants}
         onNotify={onNotify}
@@ -401,6 +442,8 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
         onAddSessionToEvent={handleNavigateToCreateSession}
         onEditEvent={handleNavigateToEditEvent}
         onApproveEvent={handleApproveEvent}
+        onDeleteEvent={handleDeleteEvent}
+        onFinishEvent={handleFinishEvent}
         onNotify={onNotify}
       />
     );

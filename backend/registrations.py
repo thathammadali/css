@@ -59,6 +59,8 @@ def register_for_session(
     event_session = db.get(EventSession, session_id)
     if event_session is None:
         raise HTTPException(status_code=404, detail="Session not found.")
+    if event_session.event.status == "FINISHED":
+        raise HTTPException(status_code=400, detail="This event is finished and no longer accepts registrations.")
     if event_session.event.status != "PUBLISHED":
         raise HTTPException(status_code=400, detail="This event is not open for registration.")
 

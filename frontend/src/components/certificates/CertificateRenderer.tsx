@@ -15,7 +15,18 @@ import {
   Clock,
   Sparkles,
 } from 'lucide-react';
-import { CertificateItem, CertificateTemplateStyle, CertificateTemplateFormat } from '../../types';
+import { CertificateItem, CertificateSettings, CertificateTemplateStyle, CertificateTemplateFormat } from '../../types';
+
+const SETTINGS_TITLE_CLASSES: Record<string, string> = {
+  classic_ivory: 'font-serif font-bold text-lg sm:text-2xl text-amber-900',
+  modern_tech: 'font-poppins font-semibold text-lg sm:text-2xl text-emerald-300',
+  royal_navy: 'font-serif font-bold text-lg sm:text-2xl text-amber-300',
+  minimal_monochrome: 'font-poppins font-semibold text-lg sm:text-2xl text-slate-200',
+  emerald_executive: 'font-serif font-bold text-lg sm:text-2xl text-emerald-300',
+  crimson_heritage: 'font-serif font-bold text-lg sm:text-2xl text-rose-900',
+  sapphire_vector: 'font-poppins font-bold text-lg sm:text-2xl text-cyan-300',
+  default: 'font-serif font-bold text-lg sm:text-2xl text-[#854D0E]',
+};
 
 interface CertificateRendererProps {
   certificate: CertificateItem;
@@ -33,6 +44,7 @@ interface CertificateRendererProps {
   customSignatureDataUrl?: string;
   customAdminSignatureDataUrl?: string;
   customSealText?: string;
+  settings?: CertificateSettings | null;
 }
 
 /**
@@ -144,12 +156,21 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
   watermarkPending = certificate.status === 'pending_approval',
   customSignatureDataUrl,
   customAdminSignatureDataUrl,
+  settings,
 }) => {
   const isApproved = certificate.status === 'approved';
   const isPending = certificate.status === 'pending_approval';
 
+  const societyDisplay = settings?.societyName || certificate.societyWing || SOCIETY_NAME;
+  const sig1Name = settings?.signatory1Name || signatoryName;
+  const sig1Title = settings?.signatory1Title || signatoryTitle;
+  const sig2Name = settings?.signatory2Name || adminSignatoryName;
+  const sig2Title = settings?.signatory2Title || adminSignatoryTitle;
+  const settingsTitleClass = SETTINGS_TITLE_CLASSES[style] || SETTINGS_TITLE_CLASSES.default;
+
   const titleToDisplay = customTitle || certificate.title || 'Certificate of Technical Excellence';
   const subtitleToDisplay =
+    settings?.bodyLine ||
     customSubtitle ||
     'In recognition of active participation, commendable dedication, and technical merit demonstrated during university society proceedings.';
 
@@ -166,7 +187,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
       return (
         <img
           src={customSignatureDataUrl}
-          alt={signatoryName}
+          alt={sig1Name}
           className="max-h-11 max-w-[150px] object-contain mx-auto"
         />
       );
@@ -186,7 +207,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
       return (
         <img
           src={customAdminSignatureDataUrl}
-          alt={adminSignatoryName}
+          alt={sig2Name}
           className="max-h-11 max-w-[150px] object-contain mx-auto"
         />
       );
@@ -231,8 +252,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               <span className="text-[11px] font-inter font-bold tracking-[0.2em] uppercase text-amber-900 block">
                 Official SEMS Accreditation
               </span>
-              <h2 className="font-serif text-lg sm:text-xl font-bold text-slate-900 leading-tight">
-                {certificate.societyWing || SOCIETY_NAME}
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-slate-900 leading-tight [overflow-wrap:anywhere]">
+                {societyDisplay}
               </h2>
             </div>
           </div>
@@ -259,6 +280,9 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
 
         {/* Body Content */}
         <div className="relative z-10 my-8 text-center space-y-3">
+        {settings?.title && (
+          <h2 className={`${settingsTitleClass} [overflow-wrap:anywhere]`}>{settings.title}</h2>
+        )}
           <p className="font-serif italic text-sm sm:text-base text-slate-600">
             This official credential is proudly presented to
           </p>
@@ -281,7 +305,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             <h3 className="font-serif font-bold text-base sm:text-xl text-amber-900 leading-snug">
               {certificate.sessionTitle}
             </h3>
-            <p className="font-inter text-xs text-slate-500 leading-relaxed pt-1">
+            <p className="font-inter text-xs text-slate-500 leading-relaxed pt-1 [overflow-wrap:anywhere]">
               {subtitleToDisplay}
             </p>
             <p className="font-inter text-xs text-slate-600 font-medium pt-2">
@@ -298,11 +322,11 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature1('#0F766E', 'w-36 h-10')}
             </div>
             <div className="w-36 border-t border-slate-400 pt-1 mt-1" />
-            <span className="font-serif font-bold text-xs sm:text-sm text-slate-900 block">
-              {signatoryName}
+            <span className="font-serif font-bold text-xs sm:text-sm text-slate-900 block max-w-full [overflow-wrap:anywhere]">
+              {sig1Name}
             </span>
-            <span className="text-[10px] font-inter text-slate-500 block">
-              {signatoryTitle}
+            <span className="text-[10px] font-inter text-slate-500 block max-w-full [overflow-wrap:anywhere]">
+              {sig1Title}
             </span>
           </div>
 
@@ -328,11 +352,11 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature2('#7E22CE', 'w-36 h-10')}
             </div>
             <div className="w-36 border-t border-slate-400 pt-1 mt-1" />
-            <span className="font-serif font-bold text-xs sm:text-sm text-slate-900 block">
-              {adminSignatoryName}
+            <span className="font-serif font-bold text-xs sm:text-sm text-slate-900 block max-w-full [overflow-wrap:anywhere]">
+              {sig2Name}
             </span>
-            <span className="text-[10px] font-inter text-slate-500 block">
-              {adminSignatoryTitle}
+            <span className="text-[10px] font-inter text-slate-500 block max-w-full [overflow-wrap:anywhere]">
+              {sig2Title}
             </span>
           </div>
         </div>
@@ -381,8 +405,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               <span className="text-[10px] font-mono tracking-widest uppercase text-emerald-400 font-semibold block">
                 Official Digital Credential // SEMS-v3
               </span>
-              <h2 className="font-poppins text-lg sm:text-xl font-semibold text-white">
-                {certificate.societyWing || SOCIETY_NAME}
+              <h2 className="font-poppins text-lg sm:text-xl font-semibold text-white [overflow-wrap:anywhere]">
+                {societyDisplay}
               </h2>
             </div>
           </div>
@@ -403,6 +427,9 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
 
         {/* Main Body */}
         <div className="relative z-10 my-8 text-center space-y-3">
+        {settings?.title && (
+          <h2 className={`${settingsTitleClass} [overflow-wrap:anywhere]`}>{settings.title}</h2>
+        )}
           <span className="text-xs font-mono uppercase tracking-widest text-emerald-400/80">
             Participant Accreditation
           </span>
@@ -424,6 +451,9 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             <h3 className="font-poppins font-semibold text-base sm:text-xl text-emerald-400">
               {certificate.sessionTitle}
             </h3>
+            {settings?.bodyLine && (
+              <p className="font-inter text-xs text-white/60 pt-1 [overflow-wrap:anywhere]">{settings.bodyLine}</p>
+            )}
             <p className="font-inter text-xs text-white/60 pt-1">
               Issued: <span className="font-mono text-white/90">{certificate.issueDate}</span>
             </p>
@@ -437,8 +467,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature1('#34D399', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-white/20 pt-1" />
-            <span className="font-poppins text-xs font-medium text-white">{signatoryName}</span>
-            <span className="text-[10px] font-inter text-white/60">{signatoryTitle}</span>
+            <span className="font-poppins text-xs font-medium text-white max-w-full [overflow-wrap:anywhere]">{sig1Name}</span>
+            <span className="text-[10px] font-inter text-white/60 max-w-full [overflow-wrap:anywhere]">{sig1Title}</span>
           </div>
 
           <div className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-white/[0.04] border border-emerald-500/20">
@@ -453,8 +483,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature2('#38BDF8', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-white/20 pt-1" />
-            <span className="font-poppins text-xs font-medium text-white">{adminSignatoryName}</span>
-            <span className="text-[10px] font-inter text-white/60">{adminSignatoryTitle}</span>
+            <span className="font-poppins text-xs font-medium text-white max-w-full [overflow-wrap:anywhere]">{sig2Name}</span>
+            <span className="text-[10px] font-inter text-white/60 max-w-full [overflow-wrap:anywhere]">{sig2Title}</span>
           </div>
         </div>
       </div>
@@ -491,8 +521,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               <span className="text-[11px] font-serif tracking-widest uppercase text-amber-300/90 font-medium block">
                 SEMS Institutional Registry
               </span>
-              <h2 className="font-serif text-lg sm:text-xl font-bold text-white">
-                {certificate.societyWing || SOCIETY_NAME}
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-white [overflow-wrap:anywhere]">
+                {societyDisplay}
               </h2>
             </div>
           </div>
@@ -501,6 +531,9 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
 
         {/* Body */}
         <div className="relative z-10 my-8 text-center space-y-3">
+        {settings?.title && (
+          <h2 className={`${settingsTitleClass} [overflow-wrap:anywhere]`}>{settings.title}</h2>
+        )}
           <p className="font-serif italic text-xs sm:text-sm text-amber-200/80">
             This formal certificate is conferred upon
           </p>
@@ -518,7 +551,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             <h3 className="font-serif font-bold text-base sm:text-xl text-amber-300 leading-snug">
               {certificate.sessionTitle}
             </h3>
-            <p className="font-inter text-xs text-slate-300/70 pt-1 leading-relaxed">
+            <p className="font-inter text-xs text-slate-300/70 pt-1 leading-relaxed [overflow-wrap:anywhere]">
               {subtitleToDisplay}
             </p>
             <p className="font-inter text-xs text-slate-300 pt-2">
@@ -534,8 +567,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature1('#FDE68A', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-amber-400/30 pt-1" />
-            <span className="font-serif text-xs font-bold text-white">{signatoryName}</span>
-            <span className="text-[10px] font-inter text-slate-400">{signatoryTitle}</span>
+            <span className="font-serif text-xs font-bold text-white max-w-full [overflow-wrap:anywhere]">{sig1Name}</span>
+            <span className="text-[10px] font-inter text-slate-400 max-w-full [overflow-wrap:anywhere]">{sig1Title}</span>
           </div>
 
           <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white/[0.04] border border-amber-400/20">
@@ -548,8 +581,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature2('#FDE68A', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-amber-400/30 pt-1" />
-            <span className="font-serif text-xs font-bold text-white">{adminSignatoryName}</span>
-            <span className="text-[10px] font-inter text-slate-400">{adminSignatoryTitle}</span>
+            <span className="font-serif text-xs font-bold text-white max-w-full [overflow-wrap:anywhere]">{sig2Name}</span>
+            <span className="text-[10px] font-inter text-slate-400 max-w-full [overflow-wrap:anywhere]">{sig2Title}</span>
           </div>
         </div>
       </div>
@@ -584,8 +617,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               <span className="text-[10px] font-mono tracking-widest uppercase text-slate-400 block">
                 SEMS Minimalist Registry
               </span>
-              <h2 className="font-poppins text-lg sm:text-xl font-semibold text-white">
-                {certificate.societyWing || SOCIETY_NAME}
+              <h2 className="font-poppins text-lg sm:text-xl font-semibold text-white [overflow-wrap:anywhere]">
+                {societyDisplay}
               </h2>
             </div>
           </div>
@@ -593,6 +626,9 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
         </div>
 
         <div className="relative z-10 my-8 text-center space-y-3">
+        {settings?.title && (
+          <h2 className={`${settingsTitleClass} [overflow-wrap:anywhere]`}>{settings.title}</h2>
+        )}
           <p className="font-inter text-xs uppercase tracking-wider text-slate-400">
             This Certificate is Conferred To
           </p>
@@ -610,7 +646,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             <h3 className="font-poppins font-semibold text-base sm:text-xl text-slate-200 leading-snug">
               {certificate.sessionTitle}
             </h3>
-            <p className="font-inter text-xs text-slate-400 pt-1 leading-relaxed">
+            <p className="font-inter text-xs text-slate-400 pt-1 leading-relaxed [overflow-wrap:anywhere]">
               {subtitleToDisplay}
             </p>
             <p className="font-mono text-xs text-slate-400 pt-2">
@@ -625,8 +661,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature1('#CBD5E1', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-slate-600 pt-1" />
-            <span className="font-poppins text-xs font-medium text-white">{signatoryName}</span>
-            <span className="text-[10px] font-inter text-slate-400">{signatoryTitle}</span>
+            <span className="font-poppins text-xs font-medium text-white max-w-full [overflow-wrap:anywhere]">{sig1Name}</span>
+            <span className="text-[10px] font-inter text-slate-400 max-w-full [overflow-wrap:anywhere]">{sig1Title}</span>
           </div>
 
           <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white/[0.03] border border-slate-700">
@@ -639,8 +675,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature2('#CBD5E1', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-slate-600 pt-1" />
-            <span className="font-poppins text-xs font-medium text-white">{adminSignatoryName}</span>
-            <span className="text-[10px] font-inter text-slate-400">{adminSignatoryTitle}</span>
+            <span className="font-poppins text-xs font-medium text-white max-w-full [overflow-wrap:anywhere]">{sig2Name}</span>
+            <span className="text-[10px] font-inter text-slate-400 max-w-full [overflow-wrap:anywhere]">{sig2Title}</span>
           </div>
         </div>
       </div>
@@ -675,8 +711,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               <span className="text-[10px] font-serif tracking-widest uppercase text-emerald-300/90 block">
                 Executive Leadership Registry
               </span>
-              <h2 className="font-serif text-lg sm:text-xl font-bold text-white">
-                {certificate.societyWing || SOCIETY_NAME}
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-white [overflow-wrap:anywhere]">
+                {societyDisplay}
               </h2>
             </div>
           </div>
@@ -684,6 +720,9 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
         </div>
 
         <div className="relative z-10 my-8 text-center space-y-3">
+        {settings?.title && (
+          <h2 className={`${settingsTitleClass} [overflow-wrap:anywhere]`}>{settings.title}</h2>
+        )}
           <p className="font-serif italic text-xs sm:text-sm text-emerald-200/80">
             Certificate of High Distinction Awarded To
           </p>
@@ -701,7 +740,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             <h3 className="font-serif font-bold text-base sm:text-xl text-emerald-300 leading-snug">
               {certificate.sessionTitle}
             </h3>
-            <p className="font-inter text-xs text-emerald-100/70 pt-1 leading-relaxed">
+            <p className="font-inter text-xs text-emerald-100/70 pt-1 leading-relaxed [overflow-wrap:anywhere]">
               {subtitleToDisplay}
             </p>
             <p className="font-inter text-xs text-emerald-300/90 pt-2">
@@ -716,8 +755,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature1('#6EE7B7', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-emerald-500/30 pt-1" />
-            <span className="font-serif text-xs font-bold text-white">{signatoryName}</span>
-            <span className="text-[10px] font-inter text-emerald-200/70">{signatoryTitle}</span>
+            <span className="font-serif text-xs font-bold text-white max-w-full [overflow-wrap:anywhere]">{sig1Name}</span>
+            <span className="text-[10px] font-inter text-emerald-200/70 max-w-full [overflow-wrap:anywhere]">{sig1Title}</span>
           </div>
 
           <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white/[0.04] border border-emerald-500/30">
@@ -730,8 +769,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature2('#6EE7B7', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-emerald-500/30 pt-1" />
-            <span className="font-serif text-xs font-bold text-white">{adminSignatoryName}</span>
-            <span className="text-[10px] font-inter text-emerald-200/70">{adminSignatoryTitle}</span>
+            <span className="font-serif text-xs font-bold text-white max-w-full [overflow-wrap:anywhere]">{sig2Name}</span>
+            <span className="text-[10px] font-inter text-emerald-200/70 max-w-full [overflow-wrap:anywhere]">{sig2Title}</span>
           </div>
         </div>
       </div>
@@ -766,8 +805,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               <span className="text-[10px] font-serif font-bold tracking-[0.25em] uppercase text-rose-900 block">
                 Heritage & Honors Fellowship
               </span>
-              <h2 className="font-serif text-lg sm:text-xl font-bold text-slate-900">
-                {certificate.societyWing || SOCIETY_NAME}
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-slate-900 [overflow-wrap:anywhere]">
+                {societyDisplay}
               </h2>
             </div>
           </div>
@@ -775,6 +814,9 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
         </div>
 
         <div className="relative z-10 my-8 text-center space-y-3">
+        {settings?.title && (
+          <h2 className={`${settingsTitleClass} [overflow-wrap:anywhere]`}>{settings.title}</h2>
+        )}
           <p className="font-serif italic text-xs sm:text-sm text-slate-600">
             By formal decree of the Assembly, this certificate is presented to
           </p>
@@ -792,7 +834,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             <h3 className="font-serif font-bold text-base sm:text-xl text-rose-900 leading-snug">
               {certificate.sessionTitle}
             </h3>
-            <p className="font-inter text-xs text-slate-600 pt-1 leading-relaxed">
+            <p className="font-inter text-xs text-slate-600 pt-1 leading-relaxed [overflow-wrap:anywhere]">
               {subtitleToDisplay}
             </p>
             <p className="font-inter text-xs text-slate-700 font-semibold pt-2">
@@ -807,8 +849,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature1('#881337', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-rose-800/30 pt-1" />
-            <span className="font-serif font-bold text-xs text-slate-900">{signatoryName}</span>
-            <span className="text-[10px] font-inter text-slate-500">{signatoryTitle}</span>
+            <span className="font-serif font-bold text-xs text-slate-900 max-w-full [overflow-wrap:anywhere]">{sig1Name}</span>
+            <span className="text-[10px] font-inter text-slate-500 max-w-full [overflow-wrap:anywhere]">{sig1Title}</span>
           </div>
 
           <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white/90 border border-rose-800/30 shadow-sm">
@@ -823,8 +865,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature2('#881337', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-rose-800/30 pt-1" />
-            <span className="font-serif font-bold text-xs text-slate-900">{adminSignatoryName}</span>
-            <span className="text-[10px] font-inter text-slate-500">{adminSignatoryTitle}</span>
+            <span className="font-serif font-bold text-xs text-slate-900 max-w-full [overflow-wrap:anywhere]">{sig2Name}</span>
+            <span className="text-[10px] font-inter text-slate-500 max-w-full [overflow-wrap:anywhere]">{sig2Title}</span>
           </div>
         </div>
       </div>
@@ -859,8 +901,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               <span className="text-[10px] font-mono tracking-widest uppercase text-cyan-400 block">
                 Technical Sprint Accreditation
               </span>
-              <h2 className="font-poppins text-lg sm:text-xl font-bold text-white">
-                {certificate.societyWing || SOCIETY_NAME}
+              <h2 className="font-poppins text-lg sm:text-xl font-bold text-white [overflow-wrap:anywhere]">
+                {societyDisplay}
               </h2>
             </div>
           </div>
@@ -868,6 +910,9 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
         </div>
 
         <div className="relative z-10 my-8 text-center space-y-3">
+        {settings?.title && (
+          <h2 className={`${settingsTitleClass} [overflow-wrap:anywhere]`}>{settings.title}</h2>
+        )}
           <p className="font-mono text-xs uppercase tracking-wider text-cyan-300/80">
             Verified Credentials Issued To
           </p>
@@ -885,7 +930,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             <h3 className="font-poppins font-bold text-base sm:text-xl text-cyan-300 leading-snug">
               {certificate.sessionTitle}
             </h3>
-            <p className="font-inter text-xs text-slate-300/80 pt-1 leading-relaxed">
+            <p className="font-inter text-xs text-slate-300/80 pt-1 leading-relaxed [overflow-wrap:anywhere]">
               {subtitleToDisplay}
             </p>
             <p className="font-mono text-xs text-slate-300 pt-2">
@@ -900,8 +945,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature1('#38BDF8', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-cyan-400/30 pt-1" />
-            <span className="font-poppins text-xs font-bold text-white">{signatoryName}</span>
-            <span className="text-[10px] font-inter text-slate-400">{signatoryTitle}</span>
+            <span className="font-poppins text-xs font-bold text-white max-w-full [overflow-wrap:anywhere]">{sig1Name}</span>
+            <span className="text-[10px] font-inter text-slate-400 max-w-full [overflow-wrap:anywhere]">{sig1Title}</span>
           </div>
 
           <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white/[0.04] border border-cyan-500/30">
@@ -914,8 +959,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
               {renderSignature2('#38BDF8', 'w-32 h-8')}
             </div>
             <div className="w-32 border-t border-cyan-400/30 pt-1" />
-            <span className="font-poppins text-xs font-bold text-white">{adminSignatoryName}</span>
-            <span className="text-[10px] font-inter text-slate-400">{adminSignatoryTitle}</span>
+            <span className="font-poppins text-xs font-bold text-white max-w-full [overflow-wrap:anywhere]">{sig2Name}</span>
+            <span className="text-[10px] font-inter text-slate-400 max-w-full [overflow-wrap:anywhere]">{sig2Title}</span>
           </div>
         </div>
       </div>
@@ -975,8 +1020,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             <span className="text-[10px] font-serif font-bold tracking-[0.25em] uppercase text-[#854D0E] block">
               Image Graphic Canvas Accreditation
             </span>
-            <h2 className="font-serif text-lg sm:text-xl font-bold text-slate-900 leading-tight">
-              {certificate.societyWing || SOCIETY_NAME}
+            <h2 className="font-serif text-lg sm:text-xl font-bold text-slate-900 leading-tight [overflow-wrap:anywhere]">
+              {societyDisplay}
             </h2>
           </div>
         </div>
@@ -985,6 +1030,9 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
 
       {/* Superimposed Dynamic Data on Graphic Template */}
       <div className="relative z-10 my-8 text-center space-y-3">
+        {settings?.title && (
+          <h2 className={`${settingsTitleClass} [overflow-wrap:anywhere]`}>{settings.title}</h2>
+        )}
         <p className="font-serif italic text-xs sm:text-sm text-slate-600">
           This certificate is officially and dynamically awarded to
         </p>
@@ -1002,7 +1050,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
           <h3 className="font-serif font-bold text-base sm:text-xl text-[#854D0E] leading-snug">
             {certificate.sessionTitle}
           </h3>
-          <p className="font-inter text-xs text-slate-600 pt-1 leading-relaxed">
+          <p className="font-inter text-xs text-slate-600 pt-1 leading-relaxed [overflow-wrap:anywhere]">
             {subtitleToDisplay}
           </p>
           <p className="font-inter text-xs text-slate-700 font-semibold pt-2">
@@ -1018,8 +1066,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             {renderSignature1('#854D0E', 'w-32 h-8')}
           </div>
           <div className="w-32 border-t border-slate-400 pt-1" />
-          <span className="font-serif font-bold text-xs text-slate-900">{signatoryName}</span>
-          <span className="text-[10px] font-inter text-slate-500">{signatoryTitle}</span>
+          <span className="font-serif font-bold text-xs text-slate-900 max-w-full [overflow-wrap:anywhere]">{sig1Name}</span>
+          <span className="text-[10px] font-inter text-slate-500 max-w-full [overflow-wrap:anywhere]">{sig1Title}</span>
         </div>
 
         <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white/80 border border-[#C5A059] shadow-sm">
@@ -1036,8 +1084,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
             {renderSignature2('#854D0E', 'w-32 h-8')}
           </div>
           <div className="w-32 border-t border-slate-400 pt-1" />
-          <span className="font-serif font-bold text-xs text-slate-900">{adminSignatoryName}</span>
-          <span className="text-[10px] font-inter text-slate-500">{adminSignatoryTitle}</span>
+          <span className="font-serif font-bold text-xs text-slate-900 max-w-full [overflow-wrap:anywhere]">{sig2Name}</span>
+          <span className="text-[10px] font-inter text-slate-500 max-w-full [overflow-wrap:anywhere]">{sig2Title}</span>
         </div>
       </div>
     </div>
