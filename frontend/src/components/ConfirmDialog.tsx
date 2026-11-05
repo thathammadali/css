@@ -15,6 +15,7 @@ export interface ConfirmDialogProps {
   cancelText?: string;
   variant?: 'danger' | 'warning' | 'primary';
   isProcessing?: boolean;
+  confirmPhrase?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -27,6 +28,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   cancelText = 'Cancel',
   variant = 'danger',
   isProcessing = false,
+  confirmPhrase,
   onConfirm,
   onCancel,
 }) => {
@@ -35,7 +37,14 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     onClose: onCancel,
   });
 
+  const [typedPhrase, setTypedPhrase] = React.useState('');
+  React.useEffect(() => {
+    if (!isOpen) setTypedPhrase('');
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const phraseMissing = confirmPhrase !== undefined && typedPhrase !== confirmPhrase;
 
   const isDanger = variant === 'danger';
   const isWarning = variant === 'warning';
@@ -98,6 +107,22 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </div>
         </div>
 
+        {confirmPhrase !== undefined && (
+          <div className="mb-2">
+            <label htmlFor="confirm-dialog-phrase" className="block text-xs text-[var(--text-secondary)] mb-1.5">
+              Type <span className="font-semibold text-[var(--text-primary)]">{confirmPhrase}</span> to confirm
+            </label>
+            <input
+              id="confirm-dialog-phrase"
+              type="text"
+              value={typedPhrase}
+              onChange={(e) => setTypedPhrase(e.target.value)}
+              autoComplete="off"
+              className="w-full px-3 py-2 rounded-xl bg-[var(--panel-bg)] border border-[var(--panel-border)] text-xs font-inter text-[var(--text-primary)] focus:outline-none focus:border-rose-500"
+            />
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="mt-6 flex items-center justify-end gap-3 pt-3 border-t border-[var(--panel-border)]">
           <button
@@ -111,7 +136,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={isProcessing}
+            disabled={isProcessing || phraseMissing}
             className={`px-5 py-2.5 rounded-xl text-xs font-inter font-semibold text-white tracking-wide transition-all shadow-sm cursor-pointer flex items-center gap-2 active:scale-95 disabled:opacity-50 ${
               isDanger
                 ? 'bg-rose-600 hover:bg-rose-500'

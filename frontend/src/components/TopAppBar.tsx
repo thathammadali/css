@@ -1,19 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Bell,
   User,
   Check,
   Shield,
   ArrowRight,
-  CheckCircle2,
-  AlertCircle,
-  Award,
-  Calendar,
-  FileText,
-  CheckSquare,
-  ShieldCheck,
-  ShieldAlert,
-  Clock,
   Palette,
   Sun,
   Moon,
@@ -21,8 +11,7 @@ import {
   Server,
 } from 'lucide-react';
 import { SemsLogo } from './SemsLogo';
-import { DashboardRole, NavTab, NotificationItem } from '../types';
-import { notificationService } from '../services/notificationService';
+import { DashboardRole, NavTab } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { BackendConnectionModal } from './BackendConnectionModal';
 import { THEME_SWATCHES, applyThemeToDocument, THEME_STORAGE_KEY } from '../data/themes';
@@ -53,51 +42,16 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
   onOpenProfile,
   onOpenAuth,
   onLogout,
-  onNavigateTab,
 }) => {
   const { activeTheme, setTheme, isLightMode, toggleColorMode } = useTheme();
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [showTunnelModal, setShowTunnelModal] = useState(false);
-  const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const themeRef = useRef<HTMLDivElement>(null);
 
-  // Authoritative persistent notifications synchronized from notificationService
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() =>
-    notificationService.getNotifications({ email: userEmail, role: currentRole })
-  );
-
-  useEffect(() => {
-    const syncNotifications = () => {
-      setNotifications(notificationService.getNotifications({ email: userEmail, role: currentRole }));
-    };
-    syncNotifications();
-    const unsubscribe = notificationService.subscribe(syncNotifications);
-    return () => unsubscribe();
-  }, [userEmail, currentRole]);
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
-  const handleMarkAllRead = () => {
-    notificationService.markAllAsRead({ email: userEmail, role: currentRole });
-  };
-
-  const handleNotificationClick = (item: NotificationItem) => {
-    notificationService.markAsRead(item.id);
-    if (item.linkTab && onNavigateTab) {
-      onNavigateTab(item.linkTab);
-      setShowNotifications(false);
-    }
-  };
-
-  // Click outside and Escape key to close popovers
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setShowNotifications(false);
-      }
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setShowProfileMenu(false);
       }
@@ -108,7 +62,6 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'Esc') {
-        setShowNotifications(false);
         setShowProfileMenu(false);
         setShowThemePicker(false);
       }
@@ -128,8 +81,6 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         return 'Dashboard Overview';
       case 'sessions':
         return 'Events & Sessions';
-      case 'session-room':
-        return 'Session Rooms (Virtual Meeting Hub)';
       case 'form-builder':
         return 'Dynamic Form Builder';
       case 'registrants':
@@ -144,33 +95,6 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         return 'Profile & Account';
       default:
         return 'Dashboard';
-    }
-  };
-
-  const renderNotificationIcon = (type: NotificationItem['type']) => {
-    switch (type) {
-      case 'certificate_issued':
-      case 'certificate_revoked':
-        return <Award className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />;
-      case 'payment_approved':
-      case 'registration_approved':
-        return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />;
-      case 'payment_rejected':
-      case 'event_rejected':
-        return <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />;
-      case 'event_published':
-        return <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />;
-      case 'event_submitted':
-        return <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />;
-      case 'assignment_submitted':
-      case 'task_assigned':
-        return <CheckSquare className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />;
-      case 'role_updated':
-        return <ShieldCheck className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />;
-      case 'account_status':
-        return <ShieldAlert className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />;
-      default:
-        return <FileText className="w-3.5 h-3.5 text-[var(--primary-accent)] shrink-0 mt-0.5" />;
     }
   };
 
@@ -224,7 +148,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         </div>
 
         {/* Offline / Mock Mode vs Live Backend Badge */}
-        {isLoggedIn && (
+        {import.meta.env.DEV && isLoggedIn && (
           <div className="hidden sm:flex items-center ml-1 sm:ml-3 shrink-0">
             {!isBackendConnected ? (
               <span
@@ -270,7 +194,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           </span>
         </button>
 
-        {/* Backend Tunnel & Origin Button */}
+        {import.meta.env.DEV && (
         <button
           type="button"
           onClick={() => setShowTunnelModal(true)}
@@ -284,6 +208,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
             Tunnel
           </span>
         </button>
+        )}
 
         {/* Quick Theme Switcher */}
         <div className="relative" ref={themeRef}>
@@ -292,7 +217,6 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
             type="button"
             onClick={() => {
               setShowThemePicker(!showThemePicker);
-              setShowNotifications(false);
               setShowProfileMenu(false);
             }}
             style={{
@@ -424,138 +348,12 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           )}
         </div>
 
-        {/* Notifications Bell */}
-        <div className="relative" ref={notifRef}>
-          <button
-            id="btn-notifications-bell"
-            type="button"
-            onClick={() => {
-              setShowNotifications(!showNotifications);
-              setShowProfileMenu(false);
-              setShowThemePicker(false);
-            }}
-            style={{
-              borderColor: showNotifications ? 'var(--primary-accent)' : 'var(--topbar-border)',
-              backgroundColor: showNotifications ? 'var(--primary-accent-subtle)' : undefined,
-            }}
-            className="relative p-2 rounded-xl border text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/[0.08] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-accent)] flex items-center justify-center"
-            aria-label="Notifications"
-          >
-            <Bell className="w-5 h-5" />
-            {unreadCount > 0 && (
-              <span
-                className="absolute -top-1 -right-1 min-w-[17px] h-[17px] rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 shadow-xs ring-2 ring-[var(--topbar-bg)]"
-                style={{ backgroundColor: 'var(--primary-accent)' }}
-              >
-                {unreadCount}
-              </span>
-            )}
-          </button>
-
-          {/* Notifications Dropdown Popover */}
-          {showNotifications && (
-            <div
-              id="notifications-panel"
-              style={{
-                backgroundColor: 'var(--panel-bg)',
-                borderColor: 'var(--panel-border)',
-              }}
-              className="absolute right-0 mt-2 w-[320px] sm:w-[380px] rounded-2xl border shadow-2xl p-3 z-50 text-left animate-fadeIn"
-            >
-              <div
-                className="flex items-center justify-between pb-2 mb-2 border-b px-1"
-                style={{ borderColor: 'var(--panel-border)' }}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="font-poppins font-semibold text-sm"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
-                    Notifications
-                  </span>
-                  {unreadCount > 0 && (
-                    <span
-                      className="text-[10px] font-inter text-white px-1.5 py-0.2 rounded-full font-semibold"
-                      style={{ backgroundColor: 'var(--primary-accent)' }}
-                    >
-                      {unreadCount} new
-                    </span>
-                  )}
-                </div>
-                {unreadCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleMarkAllRead}
-                    className="text-[11px] font-inter text-[var(--primary-accent)] hover:underline font-medium cursor-pointer"
-                  >
-                    Mark all read
-                  </button>
-                )}
-              </div>
-
-              <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
-                {notifications.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-[var(--text-secondary)]">
-                    No notifications right now.
-                  </div>
-                ) : (
-                  notifications.map((n) => (
-                    <div
-                      key={n.id}
-                      onClick={() => handleNotificationClick(n)}
-                      style={{ borderColor: 'var(--panel-border)' }}
-                      className={`p-2.5 rounded-xl border text-[12px] font-inter transition-all cursor-pointer ${
-                        n.read
-                          ? 'bg-black/5 dark:bg-white/[0.03] text-[var(--text-secondary)]'
-                          : 'bg-black/10 dark:bg-white/[0.07] text-[var(--text-primary)] shadow-xs'
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        {renderNotificationIcon(n.type)}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <span
-                              className="font-semibold leading-snug truncate"
-                              style={{ color: 'var(--text-primary)' }}
-                            >
-                              {n.title}
-                            </span>
-                            <span className="text-[10px] text-[var(--text-secondary)] shrink-0 font-mono">
-                              {n.timestamp}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-[var(--text-secondary)] line-clamp-2 mt-0.5 leading-relaxed">
-                            {n.message}
-                          </p>
-                          {n.linkTab && (
-                            <span className="text-[10px] text-[var(--primary-accent)] hover:underline font-medium block mt-1">
-                              View details →
-                            </span>
-                          )}
-                        </div>
-                        {!n.read && (
-                          <span
-                            className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5"
-                            style={{ backgroundColor: 'var(--primary-accent)' }}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Profile Avatar Circle */}
         <div className="relative" ref={profileRef}>
           <button
             id="btn-profile-avatar"
             type="button"
             onClick={() => {
               setShowProfileMenu(!showProfileMenu);
-              setShowNotifications(false);
               setShowThemePicker(false);
             }}
             style={{ borderColor: 'var(--topbar-border)' }}
@@ -677,10 +475,12 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
       </div>
     </header>
 
-    <BackendConnectionModal
-      isOpen={showTunnelModal}
-      onClose={() => setShowTunnelModal(false)}
-    />
+    {import.meta.env.DEV && (
+      <BackendConnectionModal
+        isOpen={showTunnelModal}
+        onClose={() => setShowTunnelModal(false)}
+      />
+    )}
   </>
   );
 };

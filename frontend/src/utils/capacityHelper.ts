@@ -45,15 +45,25 @@ export function getSessionCapacity(
   let enrolledCount = enrolledFromList;
 
   // If session has capacity string (e.g. "64 / 120 slots filled" or "38 / 40 slots filled")
-  if (session.capacity) {
-    const match = session.capacity.match(/(\d+)\s*\/\s*(\d+)/);
-    if (match) {
-      const parsedEnrolled = parseInt(match[1], 10);
-      const parsedTotal = parseInt(match[2], 10);
-      totalSeats = parsedTotal;
-      // If we have actual registered items in state, use whichever is higher to reflect real new submissions
-      enrolledCount = Math.max(parsedEnrolled, enrolledFromList);
-    }
+  const capacityText = String(session.capacity ?? '');
+  const match = capacityText.match(/(\d+)\s*\/\s*(\d+)/);
+  if (match) {
+    const parsedEnrolled = parseInt(match[1], 10);
+    const parsedTotal = parseInt(match[2], 10);
+    totalSeats = parsedTotal;
+    // If we have actual registered items in state, use whichever is higher to reflect real new submissions
+    enrolledCount = Math.max(parsedEnrolled, enrolledFromList);
+  } else {
+    const registeredCount = Number(session.registered_count);
+    const enrolledFromRemaining =
+      session.seatsRemaining !== undefined
+        ? Math.max(totalSeats - session.seatsRemaining, 0)
+        : 0;
+    enrolledCount = Math.max(
+      enrolledFromList,
+      Number.isFinite(registeredCount) ? registeredCount : 0,
+      enrolledFromRemaining
+    );
   }
 
   const seatsRemaining = Math.max(0, totalSeats - enrolledCount);

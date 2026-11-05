@@ -12,7 +12,6 @@ export type DashboardRole = 'super_admin' | 'admin' | 'student' | 'guest';
 export type NavTab =
   | 'home'
   | 'sessions'
-  | 'session-room'
   | 'form-builder'
   | 'registrants'
   | 'certificates'
@@ -31,18 +30,18 @@ export type EventStatus =
   | 'LIVE'
   | 'COMPLETED'
   | 'CANCELLED'
-  | 'ARCHIVED';
+  | 'ARCHIVED'
+  | 'FINISHED';
 
 export type SessionStatus = 'open' | 'closing_soon' | 'closed';
 
 export type SessionDeliveryStatus = 'UPCOMING' | 'LIVE' | 'COMPLETED';
 
-export interface RoomPermissions {
-  allowChat: boolean;
-  allowShareScreen: boolean;
-  allowUnmute: boolean;
-  allowRaiseHand: boolean;
-  allowCamera: boolean;
+export interface MeetingLink {
+  platform: 'zoom' | 'meet' | 'youtube' | 'teams' | 'other';
+  label?: string | null;
+  url: string;
+  public: boolean;
 }
 
 export type RegistrationLifecycleStatus =
@@ -59,7 +58,7 @@ export type RegistrationLifecycleStatus =
   | 'ELIGIBLE_FOR_CERTIFICATE'
   | 'CERTIFICATE_ISSUED';
 
-export type PaymentStatus = 'pending' | 'approved' | 'rejected';
+export type PaymentStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 export type FormFieldType =
   | 'text'
@@ -186,6 +185,7 @@ export interface SessionItem {
   location: string;
   meetingUrl?: string;
   meeting_link?: string | null;
+  meeting_links?: MeetingLink[];
   speaker?: string | null;
   registered_count?: number;
   isOnline?: boolean;
@@ -202,6 +202,7 @@ export interface SessionItem {
   paymentDeadline?: string;
   isPaid?: boolean;
   amount?: number;
+  paymentDetails?: PaymentDetails;
   resources?: SessionResource[];
   comments?: SessionComment[];
   tasks?: SessionTask[];
@@ -217,6 +218,13 @@ export interface SessionItem {
   attendanceCount?: number;
 }
 
+export interface PaymentDetails {
+  method?: string;
+  accountTitle?: string;
+  accountNumber?: string;
+  instructions?: string;
+}
+
 export interface EventItem {
   id: string;
   title: string;
@@ -228,8 +236,10 @@ export interface EventItem {
   sessions: SessionItem[];
   registrationDeadline: string;
   paymentDeadline?: string;
-  isPaid: boolean;
-  feeAmount: number;
+  locationType?: 'on_campus' | 'virtual' | 'hybrid';
+  capacity?: number | null;
+  isPaid?: boolean;
+  feeAmount?: number;
   createdBy: string;
   createdAt: string;
   publishedAt?: string;
@@ -259,6 +269,7 @@ export interface RegistrantItem {
   receiptPreviewUrl?: string;
   receiptRejectedReason?: string;
   status: PaymentStatus;
+  backendStatus?: 'PAYMENT_PENDING' | 'PAYMENT_REJECTED' | 'CONFIRMED' | 'CANCELLED';
   lifecycleStatus?: RegistrationLifecycleStatus;
   formVersionUsed?: number;
   submittedAt: string;
@@ -267,9 +278,11 @@ export interface RegistrantItem {
   isWaitlisted?: boolean;
   waitlistPosition?: number;
   attendanceCompleted?: boolean;
+  attended?: boolean;
   assignmentCompleted?: boolean;
   certificateEligible?: boolean;
   certificateId?: string;
+  backendUserId?: string;
 }
 
 export interface GuestRegistrationPayload {
@@ -280,81 +293,6 @@ export interface GuestRegistrationPayload {
   sessionId: string;
   receiptFile?: { name: string; size: string; dataUrl: string };
   customResponses?: Record<string, string>;
-}
-
-// ==========================================
-// SESSION ROOM & ACCESS MANAGEMENT MODELS
-// ==========================================
-export type RoomStatus = 'active' | 'revoked' | 'locked';
-
-export interface SessionRoom {
-  id: string; // Unique Room ID (e.g., "room-sess-1" or "SEMS-RM-101")
-  sessionId: string; // References Session
-  sessionTitle: string;
-  roomName: string; // e.g. "Main Engineering Hall A-102 (Live Virtual Pod)"
-  roomAccessCode: string; // Server-authoritative Unique Access Code (e.g. "SEMS-AI-9482")
-  status: RoomStatus;
-  capacity?: number;
-  activeParticipantsCount?: number;
-  meetingUrl?: string;
-  presentationTopic?: string;
-  speakerName?: string;
-  createdAt: string;
-  updatedAt: string;
-  deliveryStatus?: SessionDeliveryStatus;
-  isLive?: boolean;
-  isLocked?: boolean;
-  isRecording?: boolean;
-  recordingUrl?: string;
-  recordingDuration?: string;
-  meetingSummary?: string;
-  permissions?: RoomPermissions;
-}
-
-export interface RoomAccessDispatch {
-  id: string;
-  roomId: string;
-  sessionId: string;
-  participantEmail: string;
-  participantName: string;
-  accessCodeSent: string;
-  sentAt: string;
-  sentBy: string;
-  status: 'delivered' | 'revoked';
-}
-
-export interface RoomAccessValidationPayload {
-  sessionId: string;
-  participantEmail: string;
-  accessCode: string;
-}
-
-export interface RoomAccessValidationResponse {
-  success: boolean;
-  sessionToken?: string;
-  room?: {
-    id: string;
-    sessionId: string;
-    sessionTitle: string;
-    roomName: string;
-    status: RoomStatus;
-    meetingUrl?: string;
-    speakerName?: string;
-    presentationTopic?: string;
-    deliveryStatus?: SessionDeliveryStatus;
-    isLive?: boolean;
-    isLocked?: boolean;
-    isRecording?: boolean;
-  };
-  error?: string;
-  errorCode?:
-    | 'NOT_REGISTERED'
-    | 'PAYMENT_PENDING'
-    | 'PAYMENT_REQUIRED'
-    | 'INVALID_CODE'
-    | 'CODE_REVOKED'
-    | 'ROOM_LOCKED'
-    | 'UNAUTHORIZED';
 }
 
 export interface EligibilityCheckDetail {
@@ -387,8 +325,6 @@ export interface NotificationItem {
     | 'payment_pending'
     | 'payment_approved'
     | 'payment_rejected'
-    | 'room_code_sent'
-    | 'room_code_revoked'
     | 'certificate_issued'
     | 'certificate_revoked'
     | 'event_submitted'
@@ -424,6 +360,16 @@ export type CertificateTemplateStyle =
 
 export type CertificateTemplateFormat = 'html' | 'image';
 
+export interface CertificateSettings {
+  title?: string;
+  bodyLine?: string;
+  societyName?: string;
+  signatory1Name?: string;
+  signatory1Title?: string;
+  signatory2Name?: string;
+  signatory2Title?: string;
+}
+
 export interface CertificateSignatory {
   name: string;
   title: string;
@@ -454,6 +400,10 @@ export interface CertificateTemplateConfig {
 export interface CertificateItem {
   id: string;
   verificationCode: string; // e.g. SEMS-2026-XXXXXX
+  code?: string;
+  backendId?: string;
+  statusTag?: string;
+  category?: string;
   title: string;
   sessionTitle: string;
   eventName?: string;
@@ -469,6 +419,8 @@ export interface CertificateItem {
   templateStyle?: CertificateTemplateStyle;
   templateFormat?: CertificateTemplateFormat;
   templateVersion?: number;
+  eventId?: string;
+  settings?: CertificateSettings;
   customTitle?: string;
   customSubtitle?: string;
   grade?: string;

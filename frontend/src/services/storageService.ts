@@ -259,7 +259,6 @@ class StorageService {
 
     // 2. Clear known SEMS keys from localStorage
     const semsKeys = [
-      'sems_registrants',
       'sems_certificates',
       'sems_events',
       'sems_forms',

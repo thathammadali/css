@@ -69,15 +69,6 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
       : '2026-10-31'
   );
 
-  // Payment deadline alongside registration deadline
-  const [paymentDeadline, setPaymentDeadline] = useState(
-    initialEvent?.paymentDeadline
-      ? initialEvent.paymentDeadline.split('T')[0]
-      : '2026-11-02'
-  );
-
-  const [isPaid, setIsPaid] = useState(initialEvent?.isPaid || false);
-  const [feeAmount, setFeeAmount] = useState<number>(initialEvent?.feeAmount || 500);
 
   // Status selection (Only Super Admin can select directly)
   const [status, setStatus] = useState<EventStatus>(
@@ -89,7 +80,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
     description?: string;
     category?: string;
     organizer?: string;
-    feeAmount?: string;
+    registrationDeadline?: string;
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -120,18 +111,26 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
       description?: string;
       category?: string;
       organizer?: string;
-      feeAmount?: string;
+      registrationDeadline?: string;
     } = {};
 
-    if (!title.trim()) newErrors.title = 'Event title is required.';
-    if (!description.trim()) newErrors.description = 'Event description is required.';
+    if (title.trim().length < 3 || title.trim().length > 200) {
+      newErrors.title = 'Event title must be between 3 and 200 characters.';
+    }
+    if (!description.trim() || description.trim().length > 5000) {
+      newErrors.description = 'Event description must be between 1 and 5,000 characters.';
+    }
     
     const effectiveCategory = isCustomCategory ? customCategoryInput.trim() : category.trim();
-    if (!effectiveCategory) newErrors.category = 'Event category is required.';
+    if (!effectiveCategory || effectiveCategory.length > 100) {
+      newErrors.category = 'Event category must be between 1 and 100 characters.';
+    }
     
-    if (!organizer.trim()) newErrors.organizer = 'Organizer society name is required.';
-    if (isPaid && (feeAmount <= 0 || isNaN(feeAmount))) {
-      newErrors.feeAmount = 'Valid fee amount required for paid events.';
+    if (!organizer.trim() || organizer.trim().length > 200) {
+      newErrors.organizer = 'Organizer must be between 1 and 200 characters.';
+    }
+    if (!registrationDeadline || Number.isNaN(new Date(`${registrationDeadline}T00:00:00`).getTime())) {
+      newErrors.registrationDeadline = 'Registration deadline must be a valid date.';
     }
 
     setErrors(newErrors);
@@ -163,10 +162,9 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
       organizer: organizer.trim(),
       status: effectiveStatus,
       bannerUrl: bannerUrl.trim() || undefined,
-      registrationDeadline: `${registrationDeadline}T23:59:59Z`,
-      paymentDeadline: isPaid && paymentDeadline ? `${paymentDeadline}T23:59:59Z` : undefined,
-      isPaid,
-      feeAmount: isPaid ? Number(feeAmount) : 0,
+      registrationDeadline: `${registrationDeadline}T23:59:59+05:00`,
+      locationType: 'on_campus',
+      capacity: null,
       createdBy: initialEvent?.createdBy || currentUserEmail || 'admin@university.edu.pk',
       sessions: initialEvent?.sessions || [],
       publishedAt: effectiveStatus === 'PUBLISHED' ? new Date().toISOString() : undefined,
@@ -207,7 +205,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
           </button>
           <div>
             <h2 className="font-poppins font-medium text-[22px] sm:text-[24px] text-white leading-tight">
-              {initialEvent ? 'Edit Campus Event' : 'Propose New Campus Event'}
+              {initialEvent ? 'Edit Campus Event' : isSuperAdmin ? 'Create New Campus Event' : 'Propose New Campus Event'}
             </h2>
             <p className="text-xs font-inter text-[var(--text-sec-70)]">
               {initialEvent
@@ -262,6 +260,8 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              minLength={3}
+              maxLength={200}
               placeholder="e.g. National Robotics & Autonomous Systems Summit 2026"
               className="w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
             />
@@ -286,7 +286,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
                   className="text-[11px] text-[var(--primary-accent)] hover:underline flex items-center gap-1 cursor-pointer font-medium"
                 >
                   <Plus className="w-3 h-3" />
-                  <span>{isCustomCategory ? 'Use Existing List' : '+ Custom Category'}</span>
+                  <span>{isCustomCategory ? 'Use Existing List' : 'Custom Category'}</span>
                 </button>
               </div>
 
@@ -329,6 +329,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
                 type="text"
                 value={organizer}
                 onChange={(e) => setOrganizer(e.target.value)}
+                maxLength={200}
                 placeholder="e.g. Robotics & AI Society"
                 className="w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
               />
@@ -346,6 +347,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              maxLength={5000}
               placeholder="Describe the parent event scope, participating speakers, key workshops, and who should attend..."
               rows={4}
               className="w-full p-3 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)] leading-relaxed"
@@ -427,7 +429,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
             </p>
           </div>
 
-          {/* Registration Deadline, Payment Deadline & Fee Structure */}
+          {/* Registration Deadline */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/[0.08]">
             <div>
               <label className="block text-xs font-medium text-white mb-1.5">
@@ -439,61 +441,10 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
                 onChange={(e) => setRegistrationDeadline(e.target.value)}
                 className="w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs sm:text-sm text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
               />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-white mb-1.5">
-                Event Participation Fee
-              </label>
-              <div className="flex items-center gap-3 h-11">
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-white">
-                  <input
-                    type="checkbox"
-                    checked={isPaid}
-                    onChange={(e) => setIsPaid(e.target.checked)}
-                    className="w-4 h-4 rounded text-[var(--primary-accent)] focus:ring-[var(--primary-accent)]"
-                  />
-                  <span>Requires Registration Fee</span>
-                </label>
-
-                {isPaid && (
-                  <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-white/50">
-                      Rs.
-                    </span>
-                    <input
-                      type="number"
-                      value={feeAmount}
-                      onChange={(e) => setFeeAmount(Number(e.target.value))}
-                      min={0}
-                      step={50}
-                      className="w-full h-10 pl-9 pr-3 rounded-xl bg-white/[0.06] border border-white/[0.12] text-xs text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
-                    />
-                  </div>
-                )}
-              </div>
-              {errors.feeAmount && (
-                <p className="text-[11px] text-red-400 mt-1">{errors.feeAmount}</p>
+              {errors.registrationDeadline && (
+                <p className="text-[11px] text-red-400 mt-1">{errors.registrationDeadline}</p>
               )}
             </div>
-
-            {/* Payment Slip Submission Deadline (Issue 8) */}
-            {isPaid && (
-              <div className="sm:col-span-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                <label className="block text-xs font-medium text-amber-200 mb-1.5">
-                  Payment Slip Submission Deadline
-                </label>
-                <input
-                  type="date"
-                  value={paymentDeadline}
-                  onChange={(e) => setPaymentDeadline(e.target.value)}
-                  className="w-full h-11 px-3.5 rounded-xl bg-white/[0.06] border border-amber-400/30 text-xs sm:text-sm text-white focus:outline-none focus:ring-1 focus:ring-[var(--primary-accent)]"
-                />
-                <p className="text-[10px] text-amber-300/80 mt-1">
-                  Enrolled attendees must upload and verify their bank/EasyPaisa receipt before this date.
-                </p>
-              </div>
-            )}
           </div>
 
           {/* Super Admin Status Override (Super Admin Only) */}
@@ -538,7 +489,7 @@ export const EventCreatePage: React.FC<EventCreatePageProps> = ({
             ) : (
               <>
                 <Save className="w-4 h-4" />
-                <span>{initialEvent ? 'Save Changes' : isSuperAdmin ? 'Publish Event' : 'Submit for Approval'}</span>
+                <span>{initialEvent ? 'Save Changes' : isSuperAdmin ? 'Create Event' : 'Submit for Approval'}</span>
               </>
             )}
           </button>

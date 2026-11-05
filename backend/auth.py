@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Role, User
-from schemas import ProfileUpdate, SignupRequest, TokenOut, UserOut
+from rate_limit import TOO_MANY, client_ip, enforce, is_limited, rate_limit, record
+from schemas import PasswordChange, ProfileUpdate, SignupRequest, TokenOut, UserOut
 from security import create_access_token, decode_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -67,9 +68,15 @@ def require_roles(*allowed: str):
     return checker
 
 
-@router.post("/signup", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/signup",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit("signup", 30))],
+)
 def signup(data: SignupRequest, db: Session = Depends(get_db)):
     primary_email = data.primary_email.lower()
+    enforce(f"signup-email:{primary_email}", 3)
     secondary_email = data.secondary_email.lower() if data.secondary_email else None
 
     if db.query(User).filter(User.primary_email == primary_email).first():
@@ -100,14 +107,21 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenOut)
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     email = form.username.strip().lower()
+    ip = client_ip(request)
+    pair_key = f"login-fail:{ip}:{email}"
+    ip_key = f"login-fail-ip:{ip}"
+    if is_limited(pair_key, 10) or is_limited(ip_key, 120):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=TOO_MANY)
     user = (
         db.query(User)
         .filter((User.primary_email == email) | (User.secondary_email == email))
         .first()
     )
     if user is None or not verify_password(form.password, user.hashed_password):
+        record(pair_key)
+        record(ip_key)
         raise HTTPException(
             status_code=401,
             detail="Incorrect email or password.",
@@ -134,3 +148,22 @@ def update_me(
     db.commit()
     db.refresh(user)
     return to_user_out(user)
+
+
+@router.patch("/me/password", dependencies=[Depends(rate_limit("password", 5))])
+def change_password(
+    data: PasswordChange,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=422, detail="New password must be at least 8 characters.")
+    if len(data.new_password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=422, detail="New password is too long. Please use 72 bytes or fewer.")
+    if not verify_password(data.current_password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+    if data.new_password == data.current_password:
+        raise HTTPException(status_code=422, detail="New password must be different from the current password.")
+    user.hashed_password = hash_password(data.new_password)
+    db.commit()
+    return {"message": "Password updated"}

@@ -29,3 +29,13 @@ Thumbs.db
 .venv/
 backend/openapi.json
 
+
+*.dump
+
+# Added
+.env.local
+uploads/
+CLAUDE.md
+PROGRESS.log
+dist/
+openapi.json

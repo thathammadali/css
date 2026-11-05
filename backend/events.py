@@ -1,19 +1,42 @@
+import os
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.orm import Session
 
 from auth import get_current_user_optional, require_roles
 from database import get_db
-from models import Event, EventSession, Registration, User
-from schemas import EventCreate, EventOut, EventUpdate, SessionCreate, SessionOut, SessionUpdate
+from models import Assignment, AssignmentSubmission, Certificate, Event, EventSession, Registration, User
+from schemas import (
+    EventCreate,
+    EventOut,
+    EventUpdate,
+    SessionCreate,
+    SessionOut,
+    SessionUpdate,
+    check_payment_details,
+)
+
+PAYMENT_FIELDS = {"payment_method", "account_title", "account_number", "payment_instructions"}
 
 router = APIRouter(prefix="/events", tags=["events"])
+sessions_router = APIRouter(prefix="/sessions", tags=["events"])
 
 
 def _is_admin(user: User | None) -> bool:
     return user is not None and user.role.name in ("admin", "super_admin")
+
+
+def _links_payload(links, legacy):
+    """Returns (links_json, primary_url). meeting_links wins over the legacy single field."""
+    if links is not None:
+        dumped = [l.model_dump() for l in links]
+        return (dumped or None), (dumped[0]["url"] if dumped else None)
+    if legacy:
+        return [{"platform": "other", "label": None, "url": legacy, "public": False}], legacy
+    return None, None
 
 
 @router.post("", response_model=EventOut, status_code=status.HTTP_201_CREATED)
@@ -53,15 +76,15 @@ def list_events(
     pkt = timezone(timedelta(hours=5))
     query = db.query(Event)
     if not _is_admin(user):
-        query = query.filter(Event.status != "DRAFT")
+        query = query.filter(Event.status.notin_(("DRAFT", "FINISHED")))
     if category:
         query = query.filter(Event.category == category)
     if location_type:
         query = query.filter(Event.location_type == location_type)
     if is_free is True:
-        query = query.filter(Event.fee_amount == 0)
+        query = query.filter(~Event.sessions.any(EventSession.fee_amount > 0))
     elif is_free is False:
-        query = query.filter(Event.fee_amount > 0)
+        query = query.filter(Event.sessions.any(EventSession.fee_amount > 0))
     if date_from or date_to:
         conditions = []
         if date_from:
@@ -104,6 +127,28 @@ def publish_event(
     return event
 
 
+def _payment_fields(
+    fee_amount: Decimal,
+    method: str | None,
+    title: str | None,
+    number: str | None,
+    instructions: str | None,
+) -> dict:
+    """Payment account fields for a session. Free sessions (session fee 0) store none."""
+    try:
+        check_payment_details(fee_amount, title, number)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not fee_amount:
+        return {"payment_method": None, "account_title": None, "account_number": None, "payment_instructions": None}
+    return {
+        "payment_method": method,
+        "account_title": title,
+        "account_number": number,
+        "payment_instructions": instructions,
+    }
+
+
 @router.post("/{event_id}/sessions", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 def create_session(
     event_id: int,
@@ -116,6 +161,8 @@ def create_session(
         raise HTTPException(status_code=404, detail="Event not found.")
     if data.ends_at <= data.starts_at:
         raise HTTPException(status_code=400, detail="Session end time must be after the start time.")
+    links, primary = _links_payload(data.meeting_links, data.meeting_link)
+    payment = _payment_fields(data.fee_amount, data.payment_method, data.account_title, data.account_number, data.payment_instructions)
     new_session = EventSession(
         event_id=event_id,
         title=data.title,
@@ -124,8 +171,11 @@ def create_session(
         timezone=data.timezone,
         location=data.location,
         capacity=data.capacity,
-        meeting_link=data.meeting_link,
+        meeting_link=primary,
+        meeting_links=links,
         speaker=data.speaker,
+        fee_amount=data.fee_amount,
+        **payment,
     )
     db.add(new_session)
     db.commit()
@@ -164,6 +214,7 @@ def list_sessions(
         out = SessionOut.model_validate(s)
         if not admin and s.id not in confirmed_ids:
             out.meeting_link = None
+            out.meeting_links = [link for link in out.meeting_links if link.public]
         result.append(out)
     return result
 
@@ -199,11 +250,34 @@ def update_session(
     if event_session is None or event_session.event_id != event_id:
         raise HTTPException(status_code=404, detail="Session not found.")
     changes = data.model_dump(exclude_unset=True)
-    for field in ("title", "starts_at", "ends_at", "timezone"):
+    for field in ("title", "starts_at", "ends_at", "timezone", "fee_amount"):
         if field in changes and changes[field] is None:
             raise HTTPException(status_code=400, detail=f"{field} cannot be empty.")
     for field, value in changes.items():
         setattr(event_session, field, value)
+    if "meeting_links" in changes:
+        links = changes["meeting_links"] or []
+        event_session.meeting_links = links or None
+        event_session.meeting_link = links[0]["url"] if links else None
+    elif "meeting_link" in changes:
+        legacy = changes["meeting_link"]
+        event_session.meeting_links = (
+            [{"platform": "other", "label": None, "url": legacy, "public": False}] if legacy else None
+        )
+    if changes.keys() & (PAYMENT_FIELDS | {"fee_amount"}):
+        try:
+            payment = _payment_fields(
+                event_session.fee_amount,
+                event_session.payment_method,
+                event_session.account_title,
+                event_session.account_number,
+                event_session.payment_instructions,
+            )
+        except HTTPException:
+            db.rollback()
+            raise
+        for field, value in payment.items():
+            setattr(event_session, field, value)
     if event_session.ends_at <= event_session.starts_at:
         db.rollback()
         raise HTTPException(status_code=400, detail="Session end time must be after the start time.")
@@ -213,3 +287,115 @@ def update_session(
     db.commit()
     db.refresh(event_session)
     return event_session
+
+HAS_REGISTRATIONS = "This cannot be deleted because it has registrations. Cancel or finish it instead."
+
+
+def _delete_sessions(db: Session, session_ids: list[int]) -> list[str]:
+    """Deletes the assignments (and submissions) of these sessions, then the sessions. Returns file paths to remove after commit."""
+    if not session_ids:
+        return []
+    assignment_ids = select(Assignment.id).where(Assignment.session_id.in_(session_ids))
+    files = list(
+        db.scalars(select(AssignmentSubmission.file_path).where(AssignmentSubmission.assignment_id.in_(assignment_ids)))
+    )
+    db.execute(delete(AssignmentSubmission).where(AssignmentSubmission.assignment_id.in_(assignment_ids)))
+    db.execute(delete(Assignment).where(Assignment.session_id.in_(session_ids)))
+    db.execute(delete(EventSession).where(EventSession.id.in_(session_ids)))
+    return files
+
+
+def _remove_files(paths: list[str]) -> None:
+    for path in paths:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+@router.delete("/{event_id}")
+def delete_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("super_admin")),
+):
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    registrations = db.scalar(
+        select(func.count(Registration.id))
+        .join(EventSession, Registration.session_id == EventSession.id)
+        .where(EventSession.event_id == event_id)
+    )
+    if registrations:
+        raise HTTPException(status_code=409, detail=HAS_REGISTRATIONS)
+    if db.scalar(select(func.count(Certificate.id)).where(Certificate.event_id == event_id)):
+        raise HTTPException(
+            status_code=409,
+            detail="This cannot be deleted because certificates were issued for it. Finish it instead.",
+        )
+    try:
+        session_ids = list(db.scalars(select(EventSession.id).where(EventSession.event_id == event_id)))
+        files = _delete_sessions(db, session_ids)
+        db.execute(delete(Event).where(Event.id == event_id))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    _remove_files(files)
+    return {"message": "Event deleted"}
+
+
+@sessions_router.delete("/{session_id}")
+def delete_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("super_admin")),
+):
+    event_session = db.get(EventSession, session_id)
+    if event_session is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if db.scalar(select(func.count(Registration.id)).where(Registration.session_id == session_id)):
+        raise HTTPException(status_code=409, detail=HAS_REGISTRATIONS)
+    try:
+        files = _delete_sessions(db, [session_id])
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    _remove_files(files)
+    return {"message": "Session deleted"}
+
+
+@router.patch("/{event_id}/finish", response_model=EventOut)
+def finish_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("super_admin")),
+):
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    if event.status != "PUBLISHED":
+        raise HTTPException(status_code=400, detail=f"Only a published event can be finished, not '{event.status}'.")
+    event.status = "FINISHED"
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+@router.patch("/{event_id}/reopen", response_model=EventOut)
+def reopen_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("super_admin")),
+):
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    if event.status != "FINISHED":
+        raise HTTPException(status_code=400, detail="Only finished events can be reopened.")
+    event.status = "PUBLISHED"
+    db.commit()
+    db.refresh(event)
+    return event

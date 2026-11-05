@@ -2,6 +2,7 @@ import React from 'react';
 import { Calendar, MapPin, Users, ArrowUpRight, User, Video, ExternalLink } from 'lucide-react';
 import { SessionItem, SessionStatus } from '../types';
 import { getSessionCapacity } from '../utils/capacityHelper';
+import MeetingLinks from './MeetingLinks';
 
 interface SessionCardProps {
   session: SessionItem;
@@ -129,22 +130,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({ session, onClick }) =>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {session.meeting_link && (
-            <a
-              href={session.meeting_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-white text-[11px] font-medium transition-all"
-              title="Open Confirmed Meeting Link"
-            >
-              <Video className="w-3 h-3 text-emerald-400" />
-              <span>Meeting</span>
-              <ExternalLink className="w-2.5 h-2.5 opacity-70" />
-            </a>
-          )}
+          <MeetingLinks session={session} compact />
 
           <span className="inline-flex items-center gap-1 text-[var(--primary-accent)] font-medium group-hover:translate-x-0.5 transition-transform">
             <span>View</span>
